@@ -1080,3 +1080,27 @@ initDatabase()
     process.exit(1);
 
   });
+
+app.get("/api/reset-unsent", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      UPDATE syn
+      SET
+        sent_to_zapier = FALSE,
+        sent_at = NULL
+      RETURNING item_id
+    `);
+
+    return res.json({
+      success: true,
+      count: result.rows.length,
+      resetItemIds: result.rows.map(r => r.item_id)
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
