@@ -32,7 +32,6 @@ const DATABASE_URL =
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-
   ssl: {
     rejectUnauthorized: false
   }
@@ -40,7 +39,7 @@ const pool = new Pool({
 
 
 // ==================================================
-// DATABASE INIT
+// DATABASE
 // ==================================================
 
 async function initDatabase() {
@@ -60,12 +59,12 @@ async function initDatabase() {
     )
   `);
 
-  console.log("[DB] Database ready.");
+  console.log("[DB] Database ready");
 }
 
 
 // ==================================================
-// DATE HELPERS
+// DATE
 // ==================================================
 
 function normalizeDate(value) {
@@ -104,13 +103,33 @@ function normalizeDate(value) {
   const text =
     String(value).trim();
 
-  const isoMatch =
+  const iso =
     text.match(
       /(\d{4}-\d{2}-\d{2})/
     );
 
-  if (isoMatch) {
-    return isoMatch[1];
+  if (iso) {
+    return iso[1];
+  }
+
+  // DD/MM/YYYY
+  const danish =
+    text.match(
+      /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/
+    );
+
+  if (danish) {
+
+    const day =
+      String(danish[1]).padStart(2, "0");
+
+    const month =
+      String(danish[2]).padStart(2, "0");
+
+    const year =
+      danish[3];
+
+    return `${year}-${month}-${day}`;
   }
 
   const parsed =
@@ -122,20 +141,17 @@ function normalizeDate(value) {
     )
   ) {
 
-    const year =
-      parsed.getUTCFullYear();
+    return [
+      parsed.getUTCFullYear(),
 
-    const month =
       String(
         parsed.getUTCMonth() + 1
-      ).padStart(2, "0");
+      ).padStart(2, "0"),
 
-    const day =
       String(
         parsed.getUTCDate()
-      ).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
+      ).padStart(2, "0")
+    ].join("-");
   }
 
   return null;
@@ -167,30 +183,23 @@ function formatDatabaseDate(value) {
   }
 
   if (
-    value instanceof Date
+    value instanceof Date &&
+    !Number.isNaN(
+      value.getTime()
+    )
   ) {
 
-    if (
-      !Number.isNaN(
-        value.getTime()
-      )
-    ) {
+    return [
+      value.getUTCFullYear(),
 
-      const year =
-        value.getUTCFullYear();
+      String(
+        value.getUTCMonth() + 1
+      ).padStart(2, "0"),
 
-      const month =
-        String(
-          value.getUTCMonth() + 1
-        ).padStart(2, "0");
-
-      const day =
-        String(
-          value.getUTCDate()
-        ).padStart(2, "0");
-
-      return `${year}-${month}-${day}`;
-    }
+      String(
+        value.getUTCDate()
+      ).padStart(2, "0")
+    ].join("-");
   }
 
   return normalizeDate(value) || "";
@@ -228,29 +237,21 @@ async function mondayRequest(
       }
     );
 
+
   const text =
     await response.text();
+
 
   let data;
 
   try {
-
-    data =
-      JSON.parse(text);
-
+    data = JSON.parse(text);
   } catch {
-
-    data =
-      text;
+    data = text;
   }
 
-  if (!response.ok) {
 
-    console.error(
-      "[MONDAY API] HTTP ERROR:",
-      response.status,
-      data
-    );
+  if (!response.ok) {
 
     throw new Error(
       `Monday API HTTP ${response.status}: ` +
@@ -258,18 +259,15 @@ async function mondayRequest(
     );
   }
 
+
   if (data.errors) {
 
-    console.error(
-      "[MONDAY API] GRAPHQL ERROR:",
-      data.errors
-    );
-
     throw new Error(
-      `Monday API fejl: ` +
+      `Monday API error: ` +
       JSON.stringify(data.errors)
     );
   }
+
 
   return data.data;
 }
@@ -279,14 +277,7 @@ async function mondayRequest(
 // GET MONDAY ITEM
 // ==================================================
 
-async function getMondayItem(
-  itemId
-) {
-
-  console.log(
-    "[MONDAY] Getting item:",
-    itemId
-  );
+async function getMondayItem(itemId) {
 
   const query = `
     query ($itemId: ID!) {
@@ -297,14 +288,7 @@ async function getMondayItem(
 
         name
 
-        column_values(ids: [
-          "text71",
-          "text4",
-          "text",
-          "text7",
-          "date5",
-          "color_mm6g91vf"
-        ]) {
+        column_values {
 
           id
           text
@@ -316,6 +300,7 @@ async function getMondayItem(
     }
   `;
 
+
   const data =
     await mondayRequest(
       query,
@@ -324,9 +309,11 @@ async function getMondayItem(
       }
     );
 
+
   const item =
     data.items?.[0] ||
     null;
+
 
   if (!item) {
 
@@ -338,19 +325,21 @@ async function getMondayItem(
     return null;
   }
 
+
   console.log(
     "[MONDAY] Found:",
     item.id,
-    "| Kunde:",
+    "|",
     item.name
   );
+
 
   return item;
 }
 
 
 // ==================================================
-// GET COLUMN TEXT
+// COLUMN VALUE
 // ==================================================
 
 function getColumnText(
@@ -364,10 +353,91 @@ function getColumnText(
         c.id === columnId
     );
 
-  return (
-    column?.text ||
-    ""
-  );
+
+  if (!column) {
+    return "";
+  }
+
+
+  // ----------------------------------------------
+  // Normal Monday text
+  // ----------------------------------------------
+
+  if (
+    column.text !== undefined &&
+    column.text !== null &&
+    String(column.text).trim() !== ""
+  ) {
+
+    return String(
+      column.text
+    ).trim();
+  }
+
+
+  // ----------------------------------------------
+  // Value fallback
+  // ----------------------------------------------
+
+  if (
+    column.value !== undefined &&
+    column.value !== null &&
+    column.value !== ""
+  ) {
+
+    try {
+
+      const parsed =
+        typeof column.value === "string"
+          ? JSON.parse(column.value)
+          : column.value;
+
+
+      if (
+        parsed &&
+        parsed.text !== undefined &&
+        parsed.text !== null
+      ) {
+
+        return String(
+          parsed.text
+        ).trim();
+      }
+
+
+      if (
+        parsed &&
+        parsed.value !== undefined &&
+        parsed.value !== null
+      ) {
+
+        return String(
+          parsed.value
+        ).trim();
+      }
+
+
+      if (
+        parsed &&
+        parsed.date !== undefined &&
+        parsed.date !== null
+      ) {
+
+        return String(
+          parsed.date
+        ).trim();
+      }
+
+    } catch {
+
+      return String(
+        column.value
+      ).trim();
+    }
+  }
+
+
+  return "";
 }
 
 
@@ -427,38 +497,36 @@ app.post(
       // ----------------------------------------------
       // LABEL
       // ----------------------------------------------
-      //
-      // Monday sender:
-      //
-      // event.value.label.text
-      //
-      // ----------------------------------------------
 
       let labelText = "";
 
 
+      // Current Monday structure
       if (
         event.value &&
-        event.value.label &&
-        typeof event.value.label ===
-          "object"
+        event.value.label
       ) {
 
         labelText =
           event.value.label.text ||
           "";
+      }
 
-      } else if (
+
+      // Older structure
+      else if (
         event.labelText &&
-        typeof event.labelText ===
-          "object"
+        typeof event.labelText === "object"
       ) {
 
         labelText =
           event.labelText.text ||
           "";
+      }
 
-      } else {
+
+      // Other fallback
+      else {
 
         labelText =
           event.labelText ||
@@ -480,7 +548,7 @@ app.post(
 
 
       // ----------------------------------------------
-      // CHECK COLUMN
+      // COLUMN FILTER
       // ----------------------------------------------
 
       if (
@@ -491,20 +559,16 @@ app.post(
       ) {
 
         return res.json({
-
           success: true,
-
           ignored: true,
-
           reason:
             "Forkert kolonne"
-
         });
       }
 
 
       // ----------------------------------------------
-      // CHECK LABEL
+      // LABEL FILTER
       // ----------------------------------------------
 
       if (
@@ -514,38 +578,25 @@ app.post(
         "sendt"
       ) {
 
-        console.log(
-          "[WEBHOOK] Ignored - label:",
-          labelText
-        );
-
         return res.json({
-
           success: true,
-
           ignored: true,
-
           reason:
             "Label er ikke Sendt"
-
         });
       }
 
 
-      // ----------------------------------------------
-      // CHECK ITEM ID
-      // ----------------------------------------------
-
       if (!itemId) {
 
         throw new Error(
-          "Webhook mangler itemId/pulseId."
+          "Webhook mangler itemId/pulseId"
         );
       }
 
 
       // ----------------------------------------------
-      // GET ITEM FROM MONDAY
+      // GET MONDAY ITEM
       // ----------------------------------------------
 
       const item =
@@ -557,19 +608,23 @@ app.post(
       if (!item) {
 
         throw new Error(
-          `Monday item ${itemId} blev ikke fundet.`
+          `Monday item ${itemId} blev ikke fundet`
         );
       }
 
 
       // ----------------------------------------------
-      // READ COLUMNS
+      // COLUMNS
       // ----------------------------------------------
 
       const columns =
         item.column_values ||
         [];
 
+
+      // ----------------------------------------------
+      // DATA
+      // ----------------------------------------------
 
       const kunde =
         String(
@@ -620,94 +675,100 @@ app.post(
 
 
       // ----------------------------------------------
-      // LOG CUSTOMER
+      // DATA LOG
       // ----------------------------------------------
 
       console.log(
         "[SAVE]",
-        itemId,
-        "|",
-        kunde,
-        "|",
-        lejemalsnr,
-        "|",
-        typeSyn,
-        "|",
-        dato
+        JSON.stringify(
+          {
+            itemId:
+              item.id,
+
+            kunde,
+
+            lejemalsnr,
+
+            adresse,
+
+            vaerelser,
+
+            typeSyn,
+
+            dato
+          }
+        )
       );
 
 
       // ----------------------------------------------
-      // SAVE TO POSTGRES
+      // DATABASE
       // ----------------------------------------------
 
-      const dbResult =
-        await pool.query(
-          `
-          INSERT INTO syn (
-            item_id,
-            kunde,
-            lejemalsnr,
-            adresse,
-            vaerelser,
-            type_syn,
-            dato,
-            sent_to_zapier,
-            sent_at
-          )
+      await pool.query(
+        `
+        INSERT INTO syn (
+          item_id,
+          kunde,
+          lejemalsnr,
+          adresse,
+          vaerelser,
+          type_syn,
+          dato,
+          sent_to_zapier,
+          sent_at
+        )
 
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7,
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          FALSE,
+          NULL
+        )
+
+        ON CONFLICT (item_id)
+
+        DO UPDATE SET
+
+          kunde =
+            EXCLUDED.kunde,
+
+          lejemalsnr =
+            EXCLUDED.lejemalsnr,
+
+          adresse =
+            EXCLUDED.adresse,
+
+          vaerelser =
+            EXCLUDED.vaerelser,
+
+          type_syn =
+            EXCLUDED.type_syn,
+
+          dato =
+            EXCLUDED.dato,
+
+          sent_to_zapier =
             FALSE,
+
+          sent_at =
             NULL
-          )
-
-          ON CONFLICT (item_id)
-
-          DO UPDATE SET
-
-            kunde =
-              EXCLUDED.kunde,
-
-            lejemalsnr =
-              EXCLUDED.lejemalsnr,
-
-            adresse =
-              EXCLUDED.adresse,
-
-            vaerelser =
-              EXCLUDED.vaerelser,
-
-            type_syn =
-              EXCLUDED.type_syn,
-
-            dato =
-              EXCLUDED.dato,
-
-            sent_to_zapier =
-              FALSE,
-
-            sent_at =
-              NULL
-
-          RETURNING *
-          `,
-          [
-            item.id,
-            kunde,
-            lejemalsnr,
-            adresse,
-            vaerelser,
-            typeSyn,
-            dato
-          ]
-        );
+        `,
+        [
+          item.id,
+          kunde,
+          lejemalsnr,
+          adresse,
+          vaerelser,
+          typeSyn,
+          dato
+        ]
+      );
 
 
       console.log(
@@ -717,10 +778,6 @@ app.post(
         kunde
       );
 
-
-      // ----------------------------------------------
-      // SUCCESS
-      // ----------------------------------------------
 
       return res.json({
 
@@ -739,10 +796,7 @@ app.post(
 
         typeSyn,
 
-        dato,
-
-        database:
-          "saved"
+        dato
 
       });
 
@@ -753,6 +807,7 @@ app.post(
         "[WEBHOOK ERROR]",
         error.message
       );
+
 
       return res.status(500).json({
 
@@ -838,11 +893,6 @@ app.get(
 
     } catch (error) {
 
-      console.error(
-        "[GET /api/syn ERROR]",
-        error.message
-      );
-
       return res.status(500).json({
 
         success: false,
@@ -876,17 +926,11 @@ app.get(
           SELECT
 
             item_id,
-
             kunde,
-
             lejemalsnr,
-
             adresse,
-
             vaerelser,
-
             type_syn,
-
             dato
 
           FROM syn
@@ -937,24 +981,19 @@ app.get(
               row.item_id,
 
             kunde:
-              row.kunde ||
-              "",
+              row.kunde || "",
 
             lejemalsnr:
-              row.lejemalsnr ||
-              "",
+              row.lejemalsnr || "",
 
             adresse:
-              row.adresse ||
-              "",
+              row.adresse || "",
 
             vaerelser:
-              row.vaerelser ||
-              "",
+              row.vaerelser || "",
 
             typeSyn:
-              row.type_syn ||
-              "",
+              row.type_syn || "",
 
             dato:
               formatDatabaseDate(
@@ -971,6 +1010,7 @@ app.get(
 
       const summary = {};
 
+
       for (
         const row of syn
       ) {
@@ -978,6 +1018,7 @@ app.get(
         const kunde =
           row.kunde ||
           "EMPTY";
+
 
         summary[kunde] =
           (summary[kunde] || 0) + 1;
@@ -991,7 +1032,7 @@ app.get(
 
 
       // ----------------------------------------------
-      // SEND TO ZAPIER
+      // SEND
       // ----------------------------------------------
 
       const zapierResponse =
@@ -1020,7 +1061,7 @@ app.get(
 
 
       console.log(
-        "[SEND] Zapier:",
+        "[SEND] Zapier HTTP:",
         zapierResponse.status
       );
 
@@ -1070,7 +1111,7 @@ app.get(
 
 
       console.log(
-        "[SEND] Marked as sent:",
+        "[SEND] Marked sent:",
         itemIds.length
       );
 
@@ -1101,6 +1142,7 @@ app.get(
         error.message
       );
 
+
       return res.status(500).json({
 
         success: false,
@@ -1124,13 +1166,9 @@ app.get(
 
     try {
 
-      const itemId =
-        req.params.itemId;
-
-
       const item =
         await getMondayItem(
-          itemId
+          req.params.itemId
         );
 
 
@@ -1141,7 +1179,7 @@ app.get(
           success: false,
 
           error:
-            "Item ikke fundet."
+            "Item ikke fundet"
 
         });
       }
@@ -1179,7 +1217,7 @@ app.get(
 
 
 // ==================================================
-// DEBUG: UNSENT BY CUSTOMER
+// UNSENT SUMMARY
 // ==================================================
 
 app.get(
@@ -1193,11 +1231,15 @@ app.get(
           SELECT
             kunde,
             COUNT(*)::int AS count
+
           FROM syn
+
           WHERE
             sent_to_zapier = FALSE
+
           GROUP BY
             kunde
+
           ORDER BY
             kunde
         `);
@@ -1262,7 +1304,7 @@ app.get(
       });
 
 
-    } catch (error) {
+    } catch {
 
       return res.json({
 
@@ -1332,12 +1374,6 @@ app.get(
 
 
     } catch (error) {
-
-      console.error(
-        "[RESET ERROR]",
-        error.message
-      );
-
 
       return res.status(500).json({
 
