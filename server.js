@@ -1,5 +1,6 @@
 // ==================================================
 // ProfSyn Monday → Railway → Zapier
+// DEBUG VERSION
 // ==================================================
 
 const express = require("express");
@@ -26,6 +27,18 @@ const DATABASE_URL =
   process.env.DATABASE_URL;
 
 
+// ==================================================
+// ENV CHECK
+// ==================================================
+
+console.log("========================================");
+console.log("SERVER START");
+console.log("MONDAY_API_TOKEN:", MONDAY_API_TOKEN ? "OK" : "MISSING");
+console.log("ZAPIER_WEBHOOK_URL:", ZAPIER_WEBHOOK_URL ? "OK" : "MISSING");
+console.log("DATABASE_URL:", DATABASE_URL ? "OK" : "MISSING");
+console.log("========================================");
+
+
 if (!MONDAY_API_TOKEN) {
   console.error("MANGLER MONDAY_API_TOKEN");
 }
@@ -45,6 +58,7 @@ if (!DATABASE_URL) {
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
+
   ssl: {
     rejectUnauthorized: false
   }
@@ -56,6 +70,8 @@ const pool = new Pool({
 // ==================================================
 
 async function initDatabase() {
+
+  console.log("[DB] Initializing database...");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS syn (
@@ -72,7 +88,7 @@ async function initDatabase() {
     )
   `);
 
-  console.log("Database ready.");
+  console.log("[DB] Database ready.");
 }
 
 
@@ -90,12 +106,16 @@ function normalizeDate(value) {
     return null;
   }
 
+
   if (
     typeof value === "string" &&
-    /^\d{4}-\d{2}-\d{2}$/.test(value.trim())
+    /^\d{4}-\d{2}-\d{2}$/.test(
+      value.trim()
+    )
   ) {
     return value.trim();
   }
+
 
   if (
     typeof value === "object" &&
@@ -111,18 +131,29 @@ function normalizeDate(value) {
     }
   }
 
-  const text = String(value).trim();
+
+  const text =
+    String(value).trim();
+
 
   const isoMatch =
-    text.match(/(\d{4}-\d{2}-\d{2})/);
+    text.match(
+      /(\d{4}-\d{2}-\d{2})/
+    );
 
   if (isoMatch) {
     return isoMatch[1];
   }
 
-  const parsed = new Date(text);
 
-  if (!Number.isNaN(parsed.getTime())) {
+  const parsed =
+    new Date(text);
+
+  if (
+    !Number.isNaN(
+      parsed.getTime()
+    )
+  ) {
 
     const year =
       parsed.getUTCFullYear();
@@ -140,6 +171,7 @@ function normalizeDate(value) {
     return `${year}-${month}-${day}`;
   }
 
+
   return null;
 }
 
@@ -154,7 +186,10 @@ function formatDatabaseDate(value) {
     return "";
   }
 
-  if (typeof value === "string") {
+
+  if (
+    typeof value === "string"
+  ) {
 
     const match =
       value.match(
@@ -166,9 +201,16 @@ function formatDatabaseDate(value) {
     }
   }
 
-  if (value instanceof Date) {
 
-    if (!Number.isNaN(value.getTime())) {
+  if (
+    value instanceof Date
+  ) {
+
+    if (
+      !Number.isNaN(
+        value.getTime()
+      )
+    ) {
 
       const year =
         value.getUTCFullYear();
@@ -187,6 +229,7 @@ function formatDatabaseDate(value) {
     }
   }
 
+
   return normalizeDate(value) || "";
 }
 
@@ -199,6 +242,8 @@ async function mondayRequest(
   query,
   variables = {}
 ) {
+
+  console.log("[MONDAY API] Request starting...");
 
   const response =
     await fetch(
@@ -230,13 +275,29 @@ async function mondayRequest(
   let data;
 
   try {
-    data = JSON.parse(text);
+
+    data =
+      JSON.parse(text);
+
   } catch {
-    data = text;
+
+    data =
+      text;
   }
 
 
+  console.log(
+    "[MONDAY API] HTTP:",
+    response.status
+  );
+
+
   if (!response.ok) {
+
+    console.error(
+      "[MONDAY API] HTTP ERROR:",
+      JSON.stringify(data)
+    );
 
     throw new Error(
       `Monday API HTTP ${response.status}: ` +
@@ -247,6 +308,11 @@ async function mondayRequest(
 
   if (data.errors) {
 
+    console.error(
+      "[MONDAY API] GRAPHQL ERROR:",
+      JSON.stringify(data.errors)
+    );
+
     throw new Error(
       `Monday API fejl: ` +
       JSON.stringify(data.errors)
@@ -254,21 +320,38 @@ async function mondayRequest(
   }
 
 
+  console.log(
+    "[MONDAY API] Success"
+  );
+
+
   return data.data;
 }
 
 
 // ==================================================
-// MONDAY ITEM
+// GET MONDAY ITEM
 // ==================================================
 
-async function getMondayItem(itemId) {
+async function getMondayItem(
+  itemId
+) {
+
+  console.log(
+    "[STEP 3] Getting Monday item:",
+    itemId
+  );
+
 
   const query = `
     query ($itemId: ID!) {
+
       items(ids: [$itemId]) {
+
         id
+
         name
+
         column_values(ids: [
           "text71",
           "text4",
@@ -277,10 +360,12 @@ async function getMondayItem(itemId) {
           "date5",
           "color_mm6g91vf"
         ]) {
+
           id
           text
           value
           type
+
         }
       }
     }
@@ -296,12 +381,49 @@ async function getMondayItem(itemId) {
     );
 
 
-  return data.items?.[0] || null;
+  console.log(
+    "[STEP 3] Monday returned items:",
+    data.items?.length || 0
+  );
+
+
+  if (
+    data.items &&
+    data.items.length > 0
+  ) {
+
+    console.log(
+      "[STEP 3] FOUND ITEM:",
+      JSON.stringify(
+        {
+          id: data.items[0].id,
+          name: data.items[0].name,
+          columns:
+            data.items[0].column_values
+        },
+        null,
+        2
+      )
+    );
+
+  } else {
+
+    console.error(
+      "[STEP 3] ITEM NOT FOUND:",
+      itemId
+    );
+  }
+
+
+  return (
+    data.items?.[0] ||
+    null
+  );
 }
 
 
 // ==================================================
-// GET COLUMN VALUE
+// GET COLUMN TEXT
 // ==================================================
 
 function getColumnText(
@@ -311,10 +433,27 @@ function getColumnText(
 
   const column =
     columns.find(
-      c => c.id === columnId
+      c =>
+        c.id === columnId
     );
 
-  return column?.text || "";
+
+  console.log(
+    `[COLUMN] ${columnId}:`,
+    column
+      ? JSON.stringify({
+          text: column.text,
+          value: column.value,
+          type: column.type
+        })
+      : "NOT FOUND"
+  );
+
+
+  return (
+    column?.text ||
+    ""
+  );
 }
 
 
@@ -326,16 +465,26 @@ app.post(
   "/monday/webhook",
   async (req, res) => {
 
+    console.log("");
+    console.log("========================================");
+    console.log("[WEBHOOK] NEW MONDAY WEBHOOK");
+    console.log("========================================");
+
+
     try {
 
       // ------------------------------------------------
-      // MONDAY WEBHOOK VERIFICATION
+      // CHALLENGE
       // ------------------------------------------------
 
       if (
         req.body &&
         req.body.challenge
       ) {
+
+        console.log(
+          "[WEBHOOK] Challenge received"
+        );
 
         return res.json({
           challenge:
@@ -345,27 +494,55 @@ app.post(
 
 
       // ------------------------------------------------
+      // RAW BODY
+      // ------------------------------------------------
+
+      console.log(
+        "[WEBHOOK] RAW BODY:",
+        JSON.stringify(
+          req.body,
+          null,
+          2
+        )
+      );
+
+
+      // ------------------------------------------------
       // EVENT
       // ------------------------------------------------
 
       const event =
-        req.body?.event || {};
+        req.body?.event ||
+        {};
+
+
+      console.log(
+        "[STEP 1] Event:",
+        JSON.stringify(
+          event,
+          null,
+          2
+        )
+      );
 
 
       // ------------------------------------------------
       // ITEM ID
-      //
-      // Monday kan sende pulseId.
-      // Vi understøtter også itemId.
       // ------------------------------------------------
 
       const itemId =
         String(
-          event.pulseId ||
           event.itemId ||
+          event.pulseId ||
           event.item_id ||
           ""
         ).trim();
+
+
+      console.log(
+        "[STEP 1] Item ID:",
+        itemId || "MISSING"
+      );
 
 
       // ------------------------------------------------
@@ -377,59 +554,47 @@ app.post(
         "";
 
 
+      console.log(
+        "[STEP 1] Column:",
+        columnTitle
+      );
+
+
       // ------------------------------------------------
       // LABEL
       // ------------------------------------------------
 
       let labelText =
-        event.labelText ||
-        event.columnValue?.label?.text ||
         "";
 
 
-      // Hvis Monday sender value som JSON
       if (
-        !labelText &&
-        event.value
+        event.labelText &&
+        typeof event.labelText ===
+          "object"
       ) {
 
-        try {
+        labelText =
+          event.labelText.text ||
+          "";
 
-          const value =
-            typeof event.value === "string"
-              ? JSON.parse(event.value)
-              : event.value;
+      } else {
 
-          labelText =
-            value?.label ||
-            value?.label?.text ||
-            value?.text ||
-            "";
-
-        } catch {
-
-          labelText =
-            String(event.value);
-        }
+        labelText =
+          event.labelText ||
+          event.columnValue?.label?.text ||
+          "";
       }
 
 
-      // ------------------------------------------------
-      // DEBUG
-      // ------------------------------------------------
-
       console.log(
-        "Monday webhook:",
-        JSON.stringify({
-          itemId,
-          columnTitle,
-          labelText
-        })
+        "[STEP 1] Label:",
+        labelText
       );
 
 
       // ------------------------------------------------
-      // KUN SEND TIL E-CONOMICS
+      // VALIDATE COLUMN
       // ------------------------------------------------
 
       if (
@@ -439,16 +604,25 @@ app.post(
         "send til e-conomics"
       ) {
 
+        console.log(
+          "[STOP] Wrong column"
+        );
+
         return res.json({
+
           success: true,
+
           ignored: true,
-          reason: "Forkert kolonne"
+
+          reason:
+            "Forkert kolonne"
+
         });
       }
 
 
       // ------------------------------------------------
-      // KUN STATUS SENDT
+      // VALIDATE LABEL
       // ------------------------------------------------
 
       if (
@@ -458,28 +632,47 @@ app.post(
         "sendt"
       ) {
 
+        console.log(
+          "[STOP] Label is not Sendt:",
+          labelText
+        );
+
         return res.json({
+
           success: true,
+
           ignored: true,
-          reason: "Label er ikke Sendt"
+
+          reason:
+            "Label er ikke Sendt"
+
         });
       }
 
 
+      console.log(
+        "[STEP 2] Webhook passed filters"
+      );
+
+
       // ------------------------------------------------
-      // ITEM ID
+      // ITEM ID CHECK
       // ------------------------------------------------
 
       if (!itemId) {
 
+        console.error(
+          "[STOP] Missing itemId"
+        );
+
         throw new Error(
-          "Webhook mangler pulseId/itemId."
+          "Webhook mangler itemId/pulseId."
         );
       }
 
 
       // ------------------------------------------------
-      // HENT ITEM FRA MONDAY
+      // GET MONDAY ITEM
       // ------------------------------------------------
 
       const item =
@@ -496,20 +689,41 @@ app.post(
       }
 
 
+      console.log(
+        "[STEP 3] Item successfully retrieved"
+      );
+
+
       // ------------------------------------------------
       // COLUMNS
       // ------------------------------------------------
 
       const columns =
-        item.column_values || [];
+        item.column_values ||
+        [];
+
+
+      console.log(
+        "[STEP 4] Number of columns:",
+        columns.length
+      );
 
 
       // ------------------------------------------------
-      // KUNDE
+      // CUSTOMER
       // ------------------------------------------------
 
       const kunde =
-        item.name || "";
+        String(
+          item.name ||
+          ""
+        ).trim();
+
+
+      console.log(
+        "[STEP 4] KUNDE:",
+        kunde
+      );
 
 
       // ------------------------------------------------
@@ -574,79 +788,155 @@ app.post(
 
 
       // ------------------------------------------------
-      // DEBUG
+      // FINAL DATA BEFORE DB
       // ------------------------------------------------
 
+      const synData = {
+
+        itemId:
+          item.id,
+
+        kunde,
+
+        lejemalsnr,
+
+        adresse,
+
+        vaerelser,
+
+        typeSyn,
+
+        dato
+
+      };
+
+
       console.log(
-        "Saving syn:",
-        JSON.stringify({
-          itemId: item.id,
-          kunde,
-          lejemalsnr,
-          adresse,
-          vaerelser,
-          typeSyn,
-          dato
-        })
+        "========================================"
+      );
+
+      console.log(
+        "[STEP 5] DATA READY FOR DATABASE:"
+      );
+
+      console.log(
+        JSON.stringify(
+          synData,
+          null,
+          2
+        )
+      );
+
+      console.log(
+        "========================================"
       );
 
 
       // ------------------------------------------------
-      // GEM I DATABASE
+      // SAVE TO DATABASE
       // ------------------------------------------------
 
-      await pool.query(
-        `
-        INSERT INTO syn (
-          item_id,
-          kunde,
-          lejemalsnr,
-          adresse,
-          vaerelser,
-          type_syn,
-          dato,
-          sent_to_zapier,
-          sent_at
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          FALSE,
-          NULL
-        )
+      console.log(
+        "[STEP 6] Saving to Postgres..."
+      );
 
-        ON CONFLICT (item_id)
 
-        DO UPDATE SET
-          kunde = EXCLUDED.kunde,
-          lejemalsnr = EXCLUDED.lejemalsnr,
-          adresse = EXCLUDED.adresse,
-          vaerelser = EXCLUDED.vaerelser,
-          type_syn = EXCLUDED.type_syn,
-          dato = EXCLUDED.dato,
-          sent_to_zapier = FALSE,
-          sent_at = NULL
-        `,
-        [
-          item.id,
-          kunde,
-          lejemalsnr,
-          adresse,
-          vaerelser,
-          typeSyn,
-          dato
-        ]
+      const dbResult =
+        await pool.query(
+          `
+          INSERT INTO syn (
+            item_id,
+            kunde,
+            lejemalsnr,
+            adresse,
+            vaerelser,
+            type_syn,
+            dato,
+            sent_to_zapier,
+            sent_at
+          )
+
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            FALSE,
+            NULL
+          )
+
+          ON CONFLICT (item_id)
+
+          DO UPDATE SET
+
+            kunde =
+              EXCLUDED.kunde,
+
+            lejemalsnr =
+              EXCLUDED.lejemalsnr,
+
+            adresse =
+              EXCLUDED.adresse,
+
+            vaerelser =
+              EXCLUDED.vaerelser,
+
+            type_syn =
+              EXCLUDED.type_syn,
+
+            dato =
+              EXCLUDED.dato,
+
+            sent_to_zapier =
+              FALSE,
+
+            sent_at =
+              NULL
+
+          RETURNING *
+          `,
+          [
+            item.id,
+            kunde,
+            lejemalsnr,
+            adresse,
+            vaerelser,
+            typeSyn,
+            dato
+          ]
+        );
+
+
+      console.log(
+        "[STEP 6] DATABASE SUCCESS"
+      );
+
+
+      console.log(
+        "[STEP 6] DATABASE ROW:",
+        JSON.stringify(
+          dbResult.rows[0],
+          null,
+          2
+        )
       );
 
 
       // ------------------------------------------------
       // SUCCESS
       // ------------------------------------------------
+
+      console.log(
+        "[STEP 7] WEBHOOK COMPLETED SUCCESSFULLY"
+      );
+
+      console.log(
+        "========================================"
+      );
+
 
       return res.json({
 
@@ -673,8 +963,19 @@ app.post(
     } catch (error) {
 
       console.error(
-        "Webhook error:",
+        "========================================"
+      );
+
+      console.error(
+        "[WEBHOOK ERROR]"
+      );
+
+      console.error(
         error
+      );
+
+      console.error(
+        "========================================"
       );
 
 
@@ -704,47 +1005,77 @@ app.get(
       const result =
         await pool.query(`
           SELECT
+
             item_id AS "itemId",
+
             kunde,
+
             lejemalsnr,
+
             adresse,
+
             vaerelser,
+
             type_syn AS "typeSyn",
+
             dato,
+
             created_at AS "createdAt",
+
             sent_to_zapier AS "sentToZapier",
+
             sent_at AS "sentAt"
+
           FROM syn
-          ORDER BY created_at DESC
+
+          ORDER BY
+            created_at DESC
         `);
 
 
       const rows =
         result.rows.map(
           row => ({
+
             ...row,
+
             dato:
               formatDatabaseDate(
                 row.dato
               )
+
           })
         );
 
 
       return res.json({
+
         success: true,
-        count: rows.length,
-        syn: rows
+
+        count:
+          rows.length,
+
+        syn:
+          rows
+
       });
 
 
     } catch (error) {
 
-      console.error(error);
+      console.error(
+        "[GET /api/syn ERROR]",
+        error
+      );
+
 
       return res.status(500).json({
+
         success: false,
-        error: error.message
+
+        error:
+          error.message
+
       });
     }
   }
@@ -761,19 +1092,37 @@ app.get(
 
     try {
 
+      console.log(
+        "[SEND] Starting send-to-zapier"
+      );
+
+
       const result =
         await pool.query(`
           SELECT
+
             item_id,
+
             kunde,
+
             lejemalsnr,
+
             adresse,
+
             vaerelser,
+
             type_syn,
+
             dato
+
           FROM syn
-          WHERE sent_to_zapier = FALSE
-          ORDER BY dato ASC, item_id ASC
+
+          WHERE
+            sent_to_zapier = FALSE
+
+          ORDER BY
+            dato ASC,
+            item_id ASC
         `);
 
 
@@ -781,53 +1130,114 @@ app.get(
         result.rows;
 
 
-      if (rows.length === 0) {
+      console.log(
+        "[SEND] Number of unsent rows:",
+        rows.length
+      );
+
+
+      if (
+        rows.length === 0
+      ) {
 
         return res.json({
+
           success: true,
+
           count: 0,
+
           syn: [],
+
           message:
             "Ingen usendte syn."
+
         });
       }
 
 
-      // ------------------------------------------------
-      // OUTPUT
-      // ------------------------------------------------
-
       const syn =
         rows.map(
           row => ({
+
             itemId:
               row.item_id,
 
             kunde:
-              row.kunde || "",
+              row.kunde ||
+              "",
 
             lejemalsnr:
-              row.lejemalsnr || "",
+              row.lejemalsnr ||
+              "",
 
             adresse:
-              row.adresse || "",
+              row.adresse ||
+              "",
 
             vaerelser:
-              row.vaerelser || "",
+              row.vaerelser ||
+              "",
 
             typeSyn:
-              row.type_syn || "",
+              row.type_syn ||
+              "",
 
             dato:
               formatDatabaseDate(
                 row.dato
               )
+
           })
         );
 
 
+      // ------------------------------------------------
+      // CUSTOMER SUMMARY
+      // ------------------------------------------------
+
+      const customerSummary = {};
+
+      for (
+        const row of syn
+      ) {
+
+        const customer =
+          row.kunde ||
+          "EMPTY";
+
+        if (
+          !customerSummary[
+            customer
+          ]
+        ) {
+
+          customerSummary[
+            customer
+          ] = 0;
+
+        }
+
+        customerSummary[
+          customer
+        ]++;
+      }
+
+
       console.log(
-        "Sender til Zapier:",
+        "[SEND] CUSTOMER SUMMARY:",
+        JSON.stringify(
+          customerSummary,
+          null,
+          2
+        )
+      );
+
+
+      console.log(
+        "[SEND] DATA TO ZAPIER:"
+      );
+
+      console.log(
         JSON.stringify(
           syn,
           null,
@@ -837,13 +1247,14 @@ app.get(
 
 
       // ------------------------------------------------
-      // SEND TIL ZAPIER
+      // SEND TO ZAPIER
       // ------------------------------------------------
 
       const zapierResponse =
         await fetch(
           ZAPIER_WEBHOOK_URL,
           {
+
             method: "POST",
 
             headers: {
@@ -855,6 +1266,7 @@ app.get(
               JSON.stringify({
                 syn
               })
+
           }
         );
 
@@ -863,7 +1275,15 @@ app.get(
         await zapierResponse.text();
 
 
-      if (!zapierResponse.ok) {
+      console.log(
+        "[SEND] Zapier HTTP:",
+        zapierResponse.status
+      );
+
+
+      if (
+        !zapierResponse.ok
+      ) {
 
         throw new Error(
           `Zapier HTTP ${zapierResponse.status}: ` +
@@ -873,7 +1293,7 @@ app.get(
 
 
       // ------------------------------------------------
-      // MARKER SOM SENDT
+      // MARK AS SENT
       // ------------------------------------------------
 
       const itemIds =
@@ -886,10 +1306,18 @@ app.get(
       await pool.query(
         `
         UPDATE syn
+
         SET
-          sent_to_zapier = TRUE,
-          sent_at = CURRENT_TIMESTAMP
-        WHERE item_id = ANY($1::text[])
+
+          sent_to_zapier =
+            TRUE,
+
+          sent_at =
+            CURRENT_TIMESTAMP
+
+        WHERE
+          item_id =
+            ANY($1::text[])
         `,
         [
           itemIds
@@ -897,12 +1325,11 @@ app.get(
       );
 
 
-      // ------------------------------------------------
-      // OUTPUT
-      // ------------------------------------------------
-
-      const sentAt =
-        new Date().toISOString();
+      console.log(
+        "[SEND] Marked",
+        itemIds.length,
+        "rows as sent."
+      );
 
 
       return res.json({
@@ -914,7 +1341,9 @@ app.get(
 
         syn,
 
-        sentAt,
+        sentAt:
+          new Date()
+            .toISOString(),
 
         zapierStatus:
           zapierResponse.status
@@ -925,7 +1354,7 @@ app.get(
     } catch (error) {
 
       console.error(
-        "send-to-zapier error:",
+        "[SEND ERROR]",
         error
       );
 
@@ -966,8 +1395,12 @@ app.get(
       if (!item) {
 
         return res.status(404).json({
+
           success: false,
-          error: "Item ikke fundet."
+
+          error:
+            "Item ikke fundet."
+
         });
       }
 
@@ -990,7 +1423,11 @@ app.get(
 
     } catch (error) {
 
-      console.error(error);
+      console.error(
+        "[ITEM COLUMNS ERROR]",
+        error
+      );
+
 
       return res.status(500).json({
 
@@ -1017,7 +1454,8 @@ app.get(
 
       const result =
         await pool.query(`
-          SELECT COUNT(*)::int AS count
+          SELECT
+            COUNT(*)::int AS count
           FROM syn
         `);
 
@@ -1072,11 +1510,23 @@ app.get(
       const result =
         await pool.query(`
           UPDATE syn
+
           SET
-            sent_to_zapier = FALSE,
-            sent_at = NULL
+
+            sent_to_zapier =
+              FALSE,
+
+            sent_at =
+              NULL
+
           RETURNING item_id
         `);
+
+
+      console.log(
+        "[RESET] Reset rows:",
+        result.rows.length
+      );
 
 
       return res.json({
@@ -1088,13 +1538,20 @@ app.get(
 
         resetItemIds:
           result.rows.map(
-            r => r.item_id
+            r =>
+              r.item_id
           )
 
       });
 
 
     } catch (error) {
+
+      console.error(
+        "[RESET ERROR]",
+        error
+      );
+
 
       return res.status(500).json({
 
@@ -1114,6 +1571,7 @@ app.get(
 // ==================================================
 
 initDatabase()
+
   .then(() => {
 
     app.listen(
@@ -1129,6 +1587,7 @@ initDatabase()
     );
 
   })
+
   .catch(error => {
 
     console.error(
