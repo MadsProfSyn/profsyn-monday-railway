@@ -1,6 +1,5 @@
 // ==================================================
 // ProfSyn Monday → Railway → Zapier
-// DEBUG VERSION
 // ==================================================
 
 const express = require("express");
@@ -28,31 +27,6 @@ const DATABASE_URL =
 
 
 // ==================================================
-// ENV CHECK
-// ==================================================
-
-console.log("========================================");
-console.log("SERVER START");
-console.log("MONDAY_API_TOKEN:", MONDAY_API_TOKEN ? "OK" : "MISSING");
-console.log("ZAPIER_WEBHOOK_URL:", ZAPIER_WEBHOOK_URL ? "OK" : "MISSING");
-console.log("DATABASE_URL:", DATABASE_URL ? "OK" : "MISSING");
-console.log("========================================");
-
-
-if (!MONDAY_API_TOKEN) {
-  console.error("MANGLER MONDAY_API_TOKEN");
-}
-
-if (!ZAPIER_WEBHOOK_URL) {
-  console.error("MANGLER ZAPIER_WEBHOOK_URL");
-}
-
-if (!DATABASE_URL) {
-  console.error("MANGLER DATABASE_URL");
-}
-
-
-// ==================================================
 // POSTGRES
 // ==================================================
 
@@ -70,8 +44,6 @@ const pool = new Pool({
 // ==================================================
 
 async function initDatabase() {
-
-  console.log("[DB] Initializing database...");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS syn (
@@ -106,7 +78,6 @@ function normalizeDate(value) {
     return null;
   }
 
-
   if (
     typeof value === "string" &&
     /^\d{4}-\d{2}-\d{2}$/.test(
@@ -115,7 +86,6 @@ function normalizeDate(value) {
   ) {
     return value.trim();
   }
-
 
   if (
     typeof value === "object" &&
@@ -131,10 +101,8 @@ function normalizeDate(value) {
     }
   }
 
-
   const text =
     String(value).trim();
-
 
   const isoMatch =
     text.match(
@@ -144,7 +112,6 @@ function normalizeDate(value) {
   if (isoMatch) {
     return isoMatch[1];
   }
-
 
   const parsed =
     new Date(text);
@@ -171,7 +138,6 @@ function normalizeDate(value) {
     return `${year}-${month}-${day}`;
   }
 
-
   return null;
 }
 
@@ -186,7 +152,6 @@ function formatDatabaseDate(value) {
     return "";
   }
 
-
   if (
     typeof value === "string"
   ) {
@@ -200,7 +165,6 @@ function formatDatabaseDate(value) {
       return match[0];
     }
   }
-
 
   if (
     value instanceof Date
@@ -229,7 +193,6 @@ function formatDatabaseDate(value) {
     }
   }
 
-
   return normalizeDate(value) || "";
 }
 
@@ -242,8 +205,6 @@ async function mondayRequest(
   query,
   variables = {}
 ) {
-
-  console.log("[MONDAY API] Request starting...");
 
   const response =
     await fetch(
@@ -267,10 +228,8 @@ async function mondayRequest(
       }
     );
 
-
   const text =
     await response.text();
-
 
   let data;
 
@@ -285,18 +244,12 @@ async function mondayRequest(
       text;
   }
 
-
-  console.log(
-    "[MONDAY API] HTTP:",
-    response.status
-  );
-
-
   if (!response.ok) {
 
     console.error(
       "[MONDAY API] HTTP ERROR:",
-      JSON.stringify(data)
+      response.status,
+      data
     );
 
     throw new Error(
@@ -305,12 +258,11 @@ async function mondayRequest(
     );
   }
 
-
   if (data.errors) {
 
     console.error(
       "[MONDAY API] GRAPHQL ERROR:",
-      JSON.stringify(data.errors)
+      data.errors
     );
 
     throw new Error(
@@ -318,12 +270,6 @@ async function mondayRequest(
       JSON.stringify(data.errors)
     );
   }
-
-
-  console.log(
-    "[MONDAY API] Success"
-  );
-
 
   return data.data;
 }
@@ -338,10 +284,9 @@ async function getMondayItem(
 ) {
 
   console.log(
-    "[STEP 3] Getting Monday item:",
+    "[MONDAY] Getting item:",
     itemId
   );
-
 
   const query = `
     query ($itemId: ID!) {
@@ -371,7 +316,6 @@ async function getMondayItem(
     }
   `;
 
-
   const data =
     await mondayRequest(
       query,
@@ -380,45 +324,28 @@ async function getMondayItem(
       }
     );
 
+  const item =
+    data.items?.[0] ||
+    null;
 
-  console.log(
-    "[STEP 3] Monday returned items:",
-    data.items?.length || 0
-  );
-
-
-  if (
-    data.items &&
-    data.items.length > 0
-  ) {
-
-    console.log(
-      "[STEP 3] FOUND ITEM:",
-      JSON.stringify(
-        {
-          id: data.items[0].id,
-          name: data.items[0].name,
-          columns:
-            data.items[0].column_values
-        },
-        null,
-        2
-      )
-    );
-
-  } else {
+  if (!item) {
 
     console.error(
-      "[STEP 3] ITEM NOT FOUND:",
+      "[MONDAY] Item not found:",
       itemId
     );
+
+    return null;
   }
 
-
-  return (
-    data.items?.[0] ||
-    null
+  console.log(
+    "[MONDAY] Found:",
+    item.id,
+    "| Kunde:",
+    item.name
   );
+
+  return item;
 }
 
 
@@ -437,19 +364,6 @@ function getColumnText(
         c.id === columnId
     );
 
-
-  console.log(
-    `[COLUMN] ${columnId}:`,
-    column
-      ? JSON.stringify({
-          text: column.text,
-          value: column.value,
-          type: column.type
-        })
-      : "NOT FOUND"
-  );
-
-
   return (
     column?.text ||
     ""
@@ -465,26 +379,16 @@ app.post(
   "/monday/webhook",
   async (req, res) => {
 
-    console.log("");
-    console.log("========================================");
-    console.log("[WEBHOOK] NEW MONDAY WEBHOOK");
-    console.log("========================================");
-
-
     try {
 
-      // ------------------------------------------------
-      // CHALLENGE
-      // ------------------------------------------------
+      // ----------------------------------------------
+      // MONDAY CHALLENGE
+      // ----------------------------------------------
 
       if (
         req.body &&
         req.body.challenge
       ) {
-
-        console.log(
-          "[WEBHOOK] Challenge received"
-        );
 
         return res.json({
           challenge:
@@ -493,42 +397,14 @@ app.post(
       }
 
 
-      // ------------------------------------------------
-      // RAW BODY
-      // ------------------------------------------------
-
-      console.log(
-        "[WEBHOOK] RAW BODY:",
-        JSON.stringify(
-          req.body,
-          null,
-          2
-        )
-      );
-
-
-      // ------------------------------------------------
-      // EVENT
-      // ------------------------------------------------
-
       const event =
         req.body?.event ||
         {};
 
 
-      console.log(
-        "[STEP 1] Event:",
-        JSON.stringify(
-          event,
-          null,
-          2
-        )
-      );
-
-
-      // ------------------------------------------------
+      // ----------------------------------------------
       // ITEM ID
-      // ------------------------------------------------
+      // ----------------------------------------------
 
       const itemId =
         String(
@@ -539,36 +415,40 @@ app.post(
         ).trim();
 
 
-      console.log(
-        "[STEP 1] Item ID:",
-        itemId || "MISSING"
-      );
-
-
-      // ------------------------------------------------
+      // ----------------------------------------------
       // COLUMN
-      // ------------------------------------------------
+      // ----------------------------------------------
 
       const columnTitle =
         event.columnTitle ||
         "";
 
 
-      console.log(
-        "[STEP 1] Column:",
-        columnTitle
-      );
-
-
-      // ------------------------------------------------
+      // ----------------------------------------------
       // LABEL
-      // ------------------------------------------------
+      // ----------------------------------------------
+      //
+      // Monday sender:
+      //
+      // event.value.label.text
+      //
+      // ----------------------------------------------
 
-      let labelText =
-        "";
+      let labelText = "";
 
 
       if (
+        event.value &&
+        event.value.label &&
+        typeof event.value.label ===
+          "object"
+      ) {
+
+        labelText =
+          event.value.label.text ||
+          "";
+
+      } else if (
         event.labelText &&
         typeof event.labelText ===
           "object"
@@ -588,14 +468,20 @@ app.post(
 
 
       console.log(
-        "[STEP 1] Label:",
+        "[WEBHOOK]",
+        itemId,
+        "|",
+        event.pulseName || "",
+        "|",
+        columnTitle,
+        "|",
         labelText
       );
 
 
-      // ------------------------------------------------
-      // VALIDATE COLUMN
-      // ------------------------------------------------
+      // ----------------------------------------------
+      // CHECK COLUMN
+      // ----------------------------------------------
 
       if (
         String(columnTitle)
@@ -603,10 +489,6 @@ app.post(
           .toLowerCase() !==
         "send til e-conomics"
       ) {
-
-        console.log(
-          "[STOP] Wrong column"
-        );
 
         return res.json({
 
@@ -621,9 +503,9 @@ app.post(
       }
 
 
-      // ------------------------------------------------
-      // VALIDATE LABEL
-      // ------------------------------------------------
+      // ----------------------------------------------
+      // CHECK LABEL
+      // ----------------------------------------------
 
       if (
         String(labelText)
@@ -633,7 +515,7 @@ app.post(
       ) {
 
         console.log(
-          "[STOP] Label is not Sendt:",
+          "[WEBHOOK] Ignored - label:",
           labelText
         );
 
@@ -650,20 +532,11 @@ app.post(
       }
 
 
-      console.log(
-        "[STEP 2] Webhook passed filters"
-      );
-
-
-      // ------------------------------------------------
-      // ITEM ID CHECK
-      // ------------------------------------------------
+      // ----------------------------------------------
+      // CHECK ITEM ID
+      // ----------------------------------------------
 
       if (!itemId) {
-
-        console.error(
-          "[STOP] Missing itemId"
-        );
 
         throw new Error(
           "Webhook mangler itemId/pulseId."
@@ -671,9 +544,9 @@ app.post(
       }
 
 
-      // ------------------------------------------------
-      // GET MONDAY ITEM
-      // ------------------------------------------------
+      // ----------------------------------------------
+      // GET ITEM FROM MONDAY
+      // ----------------------------------------------
 
       const item =
         await getMondayItem(
@@ -689,29 +562,14 @@ app.post(
       }
 
 
-      console.log(
-        "[STEP 3] Item successfully retrieved"
-      );
-
-
-      // ------------------------------------------------
-      // COLUMNS
-      // ------------------------------------------------
+      // ----------------------------------------------
+      // READ COLUMNS
+      // ----------------------------------------------
 
       const columns =
         item.column_values ||
         [];
 
-
-      console.log(
-        "[STEP 4] Number of columns:",
-        columns.length
-      );
-
-
-      // ------------------------------------------------
-      // CUSTOMER
-      // ------------------------------------------------
 
       const kunde =
         String(
@@ -720,26 +578,12 @@ app.post(
         ).trim();
 
 
-      console.log(
-        "[STEP 4] KUNDE:",
-        kunde
-      );
-
-
-      // ------------------------------------------------
-      // LEJEMÅLSNR
-      // ------------------------------------------------
-
       const lejemalsnr =
         getColumnText(
           columns,
           "text71"
         );
 
-
-      // ------------------------------------------------
-      // ADRESSE
-      // ------------------------------------------------
 
       const adresse =
         getColumnText(
@@ -748,10 +592,6 @@ app.post(
         );
 
 
-      // ------------------------------------------------
-      // VÆRELSER
-      // ------------------------------------------------
-
       const vaerelser =
         getColumnText(
           columns,
@@ -759,20 +599,12 @@ app.post(
         );
 
 
-      // ------------------------------------------------
-      // SYN
-      // ------------------------------------------------
-
       const typeSyn =
         getColumnText(
           columns,
           "text7"
         );
 
-
-      // ------------------------------------------------
-      // DATO
-      // ------------------------------------------------
 
       const rawDato =
         getColumnText(
@@ -787,59 +619,27 @@ app.post(
         );
 
 
-      // ------------------------------------------------
-      // FINAL DATA BEFORE DB
-      // ------------------------------------------------
+      // ----------------------------------------------
+      // LOG CUSTOMER
+      // ----------------------------------------------
 
-      const synData = {
-
-        itemId:
-          item.id,
-
+      console.log(
+        "[SAVE]",
+        itemId,
+        "|",
         kunde,
-
+        "|",
         lejemalsnr,
-
-        adresse,
-
-        vaerelser,
-
+        "|",
         typeSyn,
-
+        "|",
         dato
-
-      };
-
-
-      console.log(
-        "========================================"
-      );
-
-      console.log(
-        "[STEP 5] DATA READY FOR DATABASE:"
-      );
-
-      console.log(
-        JSON.stringify(
-          synData,
-          null,
-          2
-        )
-      );
-
-      console.log(
-        "========================================"
       );
 
 
-      // ------------------------------------------------
-      // SAVE TO DATABASE
-      // ------------------------------------------------
-
-      console.log(
-        "[STEP 6] Saving to Postgres..."
-      );
-
+      // ----------------------------------------------
+      // SAVE TO POSTGRES
+      // ----------------------------------------------
 
       const dbResult =
         await pool.query(
@@ -911,32 +711,16 @@ app.post(
 
 
       console.log(
-        "[STEP 6] DATABASE SUCCESS"
+        "[DB] SAVED:",
+        item.id,
+        "|",
+        kunde
       );
 
 
-      console.log(
-        "[STEP 6] DATABASE ROW:",
-        JSON.stringify(
-          dbResult.rows[0],
-          null,
-          2
-        )
-      );
-
-
-      // ------------------------------------------------
+      // ----------------------------------------------
       // SUCCESS
-      // ------------------------------------------------
-
-      console.log(
-        "[STEP 7] WEBHOOK COMPLETED SUCCESSFULLY"
-      );
-
-      console.log(
-        "========================================"
-      );
-
+      // ----------------------------------------------
 
       return res.json({
 
@@ -955,7 +739,10 @@ app.post(
 
         typeSyn,
 
-        dato
+        dato,
+
+        database:
+          "saved"
 
       });
 
@@ -963,21 +750,9 @@ app.post(
     } catch (error) {
 
       console.error(
-        "========================================"
+        "[WEBHOOK ERROR]",
+        error.message
       );
-
-      console.error(
-        "[WEBHOOK ERROR]"
-      );
-
-      console.error(
-        error
-      );
-
-      console.error(
-        "========================================"
-      );
-
 
       return res.status(500).json({
 
@@ -1065,9 +840,8 @@ app.get(
 
       console.error(
         "[GET /api/syn ERROR]",
-        error
+        error.message
       );
-
 
       return res.status(500).json({
 
@@ -1083,7 +857,7 @@ app.get(
 
 
 // ==================================================
-// SEND UNSENT SYN TO ZAPIER
+// SEND TO ZAPIER
 // ==================================================
 
 app.get(
@@ -1093,7 +867,7 @@ app.get(
     try {
 
       console.log(
-        "[SEND] Starting send-to-zapier"
+        "[SEND] Starting..."
       );
 
 
@@ -1131,7 +905,7 @@ app.get(
 
 
       console.log(
-        "[SEND] Number of unsent rows:",
+        "[SEND] Unsent:",
         rows.length
       );
 
@@ -1191,64 +965,34 @@ app.get(
         );
 
 
-      // ------------------------------------------------
+      // ----------------------------------------------
       // CUSTOMER SUMMARY
-      // ------------------------------------------------
+      // ----------------------------------------------
 
-      const customerSummary = {};
+      const summary = {};
 
       for (
         const row of syn
       ) {
 
-        const customer =
+        const kunde =
           row.kunde ||
           "EMPTY";
 
-        if (
-          !customerSummary[
-            customer
-          ]
-        ) {
-
-          customerSummary[
-            customer
-          ] = 0;
-
-        }
-
-        customerSummary[
-          customer
-        ]++;
+        summary[kunde] =
+          (summary[kunde] || 0) + 1;
       }
 
 
       console.log(
-        "[SEND] CUSTOMER SUMMARY:",
-        JSON.stringify(
-          customerSummary,
-          null,
-          2
-        )
+        "[SEND] Customers:",
+        summary
       );
 
 
-      console.log(
-        "[SEND] DATA TO ZAPIER:"
-      );
-
-      console.log(
-        JSON.stringify(
-          syn,
-          null,
-          2
-        )
-      );
-
-
-      // ------------------------------------------------
+      // ----------------------------------------------
       // SEND TO ZAPIER
-      // ------------------------------------------------
+      // ----------------------------------------------
 
       const zapierResponse =
         await fetch(
@@ -1276,7 +1020,7 @@ app.get(
 
 
       console.log(
-        "[SEND] Zapier HTTP:",
+        "[SEND] Zapier:",
         zapierResponse.status
       );
 
@@ -1292,9 +1036,9 @@ app.get(
       }
 
 
-      // ------------------------------------------------
-      // MARK AS SENT
-      // ------------------------------------------------
+      // ----------------------------------------------
+      // MARK SENT
+      // ----------------------------------------------
 
       const itemIds =
         rows.map(
@@ -1326,9 +1070,8 @@ app.get(
 
 
       console.log(
-        "[SEND] Marked",
-        itemIds.length,
-        "rows as sent."
+        "[SEND] Marked as sent:",
+        itemIds.length
       );
 
 
@@ -1355,9 +1098,8 @@ app.get(
 
       console.error(
         "[SEND ERROR]",
-        error
+        error.message
       );
-
 
       return res.status(500).json({
 
@@ -1373,7 +1115,7 @@ app.get(
 
 
 // ==================================================
-// GET ITEM COLUMNS
+// ITEM DEBUG
 // ==================================================
 
 app.get(
@@ -1423,11 +1165,55 @@ app.get(
 
     } catch (error) {
 
-      console.error(
-        "[ITEM COLUMNS ERROR]",
-        error
-      );
+      return res.status(500).json({
 
+        success: false,
+
+        error:
+          error.message
+
+      });
+    }
+  }
+);
+
+
+// ==================================================
+// DEBUG: UNSENT BY CUSTOMER
+// ==================================================
+
+app.get(
+  "/api/unsent-summary",
+  async (req, res) => {
+
+    try {
+
+      const result =
+        await pool.query(`
+          SELECT
+            kunde,
+            COUNT(*)::int AS count
+          FROM syn
+          WHERE
+            sent_to_zapier = FALSE
+          GROUP BY
+            kunde
+          ORDER BY
+            kunde
+        `);
+
+
+      return res.json({
+
+        success: true,
+
+        customers:
+          result.rows
+
+      });
+
+
+    } catch (error) {
 
       return res.status(500).json({
 
@@ -1524,7 +1310,7 @@ app.get(
 
 
       console.log(
-        "[RESET] Reset rows:",
+        "[RESET] Reset:",
         result.rows.length
       );
 
@@ -1549,7 +1335,7 @@ app.get(
 
       console.error(
         "[RESET ERROR]",
-        error
+        error.message
       );
 
 
