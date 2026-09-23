@@ -1389,6 +1389,75 @@ app.get(
 
 
 // ==================================================
+// DELETE SENT SYN
+// ==================================================
+//
+// Manuel oprydning efter at syn er faktureret.
+// Endpointet sletter KUN syn, som allerede er
+// markeret som sendt til Zapier.
+//
+// Åbn i browser:
+// /api/delete-sent-syn
+// ==================================================
+
+app.get(
+  "/api/delete-sent-syn",
+  async (req, res) => {
+
+    try {
+
+      const result =
+        await pool.query(`
+          DELETE FROM syn
+          WHERE sent_to_zapier = TRUE
+          RETURNING item_id
+        `);
+
+
+      console.log(
+        "[DELETE] Deleted sent syn:",
+        result.rows.length
+      );
+
+
+      return res.json({
+
+        success: true,
+
+        deleted:
+          result.rows.length,
+
+        deletedItemIds:
+          result.rows.map(
+            r =>
+              r.item_id
+          )
+
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "[DELETE ERROR]",
+        error.message
+      );
+
+
+      return res.status(500).json({
+
+        success: false,
+
+        error:
+          error.message
+
+      });
+    }
+  }
+);
+
+
+// ==================================================
 // START
 // ==================================================
 
