@@ -4,6 +4,7 @@
 
 const express = require("express");
 const { Pool } = require("pg");
+const crypto = require("crypto");
 
 const app = express();
 
@@ -14,7 +15,8 @@ app.use(express.json());
 // ENV
 // ==================================================
 
-const PORT = process.env.PORT || 3000;
+const PORT =
+  process.env.PORT || 3000;
 
 const MONDAY_API_TOKEN =
   process.env.MONDAY_API_TOKEN;
@@ -31,7 +33,9 @@ const DATABASE_URL =
 // ==================================================
 
 const pool = new Pool({
-  connectionString: DATABASE_URL,
+  connectionString:
+    DATABASE_URL,
+
   ssl: {
     rejectUnauthorized: false
   }
@@ -59,7 +63,17 @@ async function initDatabase() {
     )
   `);
 
-  console.log("[DB] Database ready");
+  // Bruges til at identificere det konkrete
+  // batch som Zapier skal hente.
+
+  await pool.query(`
+    ALTER TABLE syn
+    ADD COLUMN IF NOT EXISTS send_batch_id TEXT
+  `);
+
+  console.log(
+    "[DB] Database ready"
+  );
 }
 
 
@@ -77,6 +91,7 @@ function normalizeDate(value) {
     return null;
   }
 
+  // Allerede YYYY-MM-DD
   if (
     typeof value === "string" &&
     /^\d{4}-\d{2}-\d{2}$/.test(
@@ -86,23 +101,29 @@ function normalizeDate(value) {
     return value.trim();
   }
 
+  // Monday object
   if (
     typeof value === "object" &&
     value !== null
   ) {
 
     if (value.date) {
-      return normalizeDate(value.date);
+      return normalizeDate(
+        value.date
+      );
     }
 
     if (value.text) {
-      return normalizeDate(value.text);
+      return normalizeDate(
+        value.text
+      );
     }
   }
 
   const text =
     String(value).trim();
 
+  // YYYY-MM-DD inde i tekst
   const iso =
     text.match(
       /(\d{4}-\d{2}-\d{2})/
@@ -112,7 +133,7 @@ function normalizeDate(value) {
     return iso[1];
   }
 
-  // DD/MM/YYYY
+  // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
   const danish =
     text.match(
       /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/
@@ -121,10 +142,14 @@ function normalizeDate(value) {
   if (danish) {
 
     const day =
-      String(danish[1]).padStart(2, "0");
+      String(
+        danish[1]
+      ).padStart(2, "0");
 
     const month =
-      String(danish[2]).padStart(2, "0");
+      String(
+        danish[2]
+      ).padStart(2, "0");
 
     const year =
       danish[3];
@@ -237,19 +262,17 @@ async function mondayRequest(
       }
     );
 
-
   const text =
     await response.text();
-
 
   let data;
 
   try {
-    data = JSON.parse(text);
+    data =
+      JSON.parse(text);
   } catch {
     data = text;
   }
-
 
   if (!response.ok) {
 
@@ -259,15 +282,15 @@ async function mondayRequest(
     );
   }
 
-
   if (data.errors) {
 
     throw new Error(
       `Monday API error: ` +
-      JSON.stringify(data.errors)
+      JSON.stringify(
+        data.errors
+      )
     );
   }
-
 
   return data.data;
 }
@@ -277,7 +300,9 @@ async function mondayRequest(
 // GET MONDAY ITEM
 // ==================================================
 
-async function getMondayItem(itemId) {
+async function getMondayItem(
+  itemId
+) {
 
   const query = `
     query ($itemId: ID!) {
@@ -300,7 +325,6 @@ async function getMondayItem(itemId) {
     }
   `;
 
-
   const data =
     await mondayRequest(
       query,
@@ -309,11 +333,9 @@ async function getMondayItem(itemId) {
       }
     );
 
-
   const item =
     data.items?.[0] ||
     null;
-
 
   if (!item) {
 
@@ -325,14 +347,12 @@ async function getMondayItem(itemId) {
     return null;
   }
 
-
   console.log(
     "[MONDAY] Found:",
     item.id,
     "|",
     item.name
   );
-
 
   return item;
 }
@@ -353,7 +373,6 @@ function getColumnText(
         c.id === columnId
     );
 
-
   if (!column) {
     return "";
   }
@@ -366,7 +385,9 @@ function getColumnText(
   if (
     column.text !== undefined &&
     column.text !== null &&
-    String(column.text).trim() !== ""
+    String(
+      column.text
+    ).trim() !== ""
   ) {
 
     return String(
@@ -389,7 +410,9 @@ function getColumnText(
 
       const parsed =
         typeof column.value === "string"
-          ? JSON.parse(column.value)
+          ? JSON.parse(
+              column.value
+            )
           : column.value;
 
 
@@ -435,7 +458,6 @@ function getColumnText(
       ).trim();
     }
   }
-
 
   return "";
 }
@@ -680,24 +702,22 @@ app.post(
 
       console.log(
         "[SAVE]",
-        JSON.stringify(
-          {
-            itemId:
-              item.id,
+        JSON.stringify({
+          itemId:
+            item.id,
 
-            kunde,
+          kunde,
 
-            lejemalsnr,
+          lejemalsnr,
 
-            adresse,
+          adresse,
 
-            vaerelser,
+          vaerelser,
 
-            typeSyn,
+          typeSyn,
 
-            dato
-          }
-        )
+          dato
+        })
       );
 
 
@@ -716,7 +736,8 @@ app.post(
           type_syn,
           dato,
           sent_to_zapier,
-          sent_at
+          sent_at,
+          send_batch_id
         )
 
         VALUES (
@@ -728,6 +749,7 @@ app.post(
           $6,
           $7,
           FALSE,
+          NULL,
           NULL
         )
 
@@ -757,6 +779,9 @@ app.post(
             FALSE,
 
           sent_at =
+            NULL,
+
+          send_batch_id =
             NULL
         `,
         [
@@ -854,7 +879,9 @@ app.get(
 
             sent_to_zapier AS "sentToZapier",
 
-            sent_at AS "sentAt"
+            sent_at AS "sentAt",
+
+            send_batch_id AS "sendBatchId"
 
           FROM syn
 
@@ -893,6 +920,12 @@ app.get(
 
     } catch (error) {
 
+      console.error(
+        "[GET SYN ERROR]",
+        error.message
+      );
+
+
       return res.status(500).json({
 
         success: false,
@@ -909,6 +942,11 @@ app.get(
 // ==================================================
 // SEND TO ZAPIER
 // ==================================================
+//
+// Railway sender nu kun en lille trigger.
+// Zapier henter derefter hele batchen via:
+// /api/syn-for-zapier/:batchId
+// ==================================================
 
 app.get(
   "/api/send-to-zapier",
@@ -920,6 +958,10 @@ app.get(
         "[SEND] Starting..."
       );
 
+
+      // ----------------------------------------------
+      // HENT ALLE USENDTE SYN
+      // ----------------------------------------------
 
       const result =
         await pool.query(`
@@ -954,6 +996,10 @@ app.get(
       );
 
 
+      // ----------------------------------------------
+      // INGENTING AT SENDE
+      // ----------------------------------------------
+
       if (
         rows.length === 0
       ) {
@@ -964,8 +1010,6 @@ app.get(
 
           count: 0,
 
-          syn: [],
-
           message:
             "Ingen usendte syn."
 
@@ -973,35 +1017,59 @@ app.get(
       }
 
 
-      const syn =
+      // ----------------------------------------------
+      // LAV UNIKT BATCH-ID
+      // ----------------------------------------------
+
+      const batchId =
+        crypto.randomUUID();
+
+
+      console.log(
+        "[SEND] Batch:",
+        batchId
+      );
+
+
+      // ----------------------------------------------
+      // ITEM IDS
+      // ----------------------------------------------
+
+      const itemIds =
         rows.map(
-          row => ({
-
-            itemId:
-              row.item_id,
-
-            kunde:
-              row.kunde || "",
-
-            lejemalsnr:
-              row.lejemalsnr || "",
-
-            adresse:
-              row.adresse || "",
-
-            vaerelser:
-              row.vaerelser || "",
-
-            typeSyn:
-              row.type_syn || "",
-
-            dato:
-              formatDatabaseDate(
-                row.dato
-              )
-
-          })
+          row =>
+            row.item_id
         );
+
+
+      // ----------------------------------------------
+      // GEM BATCH-ID
+      // ----------------------------------------------
+
+      await pool.query(
+        `
+        UPDATE syn
+
+        SET
+          send_batch_id = $1
+
+        WHERE
+          item_id =
+            ANY($2::text[])
+        `,
+        [
+          batchId,
+          itemIds
+        ]
+      );
+
+
+      // ----------------------------------------------
+      // URL SOM ZAPIER SKAL HENTE
+      // ----------------------------------------------
+
+      const synUrl =
+        `https://profsyn-monday-railway-production-d25e.up.railway.app/api/syn-for-zapier/${batchId}`;
 
 
       // ----------------------------------------------
@@ -1010,15 +1078,13 @@ app.get(
 
       const summary = {};
 
-
       for (
-        const row of syn
+        const row of rows
       ) {
 
         const kunde =
           row.kunde ||
           "EMPTY";
-
 
         summary[kunde] =
           (summary[kunde] || 0) + 1;
@@ -1032,7 +1098,34 @@ app.get(
 
 
       // ----------------------------------------------
-      // SEND
+      // LILLE ZAPIER PAYLOAD
+      // ----------------------------------------------
+
+      const zapierPayload = {
+
+        source:
+          "Railway",
+
+        batchId,
+
+        synUrl,
+
+        count:
+          rows.length
+
+      };
+
+
+      console.log(
+        "[SEND] Trigger:",
+        JSON.stringify(
+          zapierPayload
+        )
+      );
+
+
+      // ----------------------------------------------
+      // SEND TRIGGER TIL ZAPIER
       // ----------------------------------------------
 
       const zapierResponse =
@@ -1048,9 +1141,9 @@ app.get(
             },
 
             body:
-              JSON.stringify({
-                syn
-              })
+              JSON.stringify(
+                zapierPayload
+              )
 
           }
         );
@@ -1066,9 +1159,30 @@ app.get(
       );
 
 
+      // ----------------------------------------------
+      // HVIS ZAPIER FEJLER
+      // ----------------------------------------------
+
       if (
         !zapierResponse.ok
       ) {
+
+        await pool.query(
+          `
+          UPDATE syn
+
+          SET
+            send_batch_id = NULL
+
+          WHERE
+            item_id =
+              ANY($1::text[])
+          `,
+          [
+            itemIds
+          ]
+        );
+
 
         throw new Error(
           `Zapier HTTP ${zapierResponse.status}: ` +
@@ -1078,15 +1192,8 @@ app.get(
 
 
       // ----------------------------------------------
-      // MARK SENT
+      // MARKER BATCH SOM SENDT
       // ----------------------------------------------
-
-      const itemIds =
-        rows.map(
-          row =>
-            row.item_id
-        );
-
 
       await pool.query(
         `
@@ -1116,21 +1223,26 @@ app.get(
       );
 
 
+      // ----------------------------------------------
+      // OUTPUT
+      // ----------------------------------------------
+
       return res.json({
 
         success: true,
 
         count:
-          syn.length,
+          rows.length,
 
-        syn,
+        batchId,
 
-        sentAt:
-          new Date()
-            .toISOString(),
+        synUrl,
 
         zapierStatus:
-          zapierResponse.status
+          zapierResponse.status,
+
+        message:
+          "Batch sendt til Zapier."
 
       });
 
@@ -1139,6 +1251,142 @@ app.get(
 
       console.error(
         "[SEND ERROR]",
+        error.message
+      );
+
+
+      return res.status(500).json({
+
+        success: false,
+
+        error:
+          error.message
+
+      });
+    }
+  }
+);
+
+
+// ==================================================
+// GET BATCH FOR ZAPIER
+// ==================================================
+//
+// Zapier bruger dette endpoint til at hente
+// hele batchen samlet.
+// ==================================================
+
+app.get(
+  "/api/syn-for-zapier/:batchId",
+  async (req, res) => {
+
+    try {
+
+      const batchId =
+        String(
+          req.params.batchId ||
+          ""
+        ).trim();
+
+
+      if (!batchId) {
+
+        return res.status(400).json({
+
+          success: false,
+
+          error:
+            "Mangler batchId."
+
+        });
+      }
+
+
+      const result =
+        await pool.query(
+          `
+          SELECT
+
+            item_id,
+            kunde,
+            lejemalsnr,
+            adresse,
+            vaerelser,
+            type_syn,
+            dato
+
+          FROM syn
+
+          WHERE
+            send_batch_id = $1
+
+          ORDER BY
+            dato ASC,
+            item_id ASC
+          `,
+          [
+            batchId
+          ]
+        );
+
+
+      const syn =
+        result.rows.map(
+          row => ({
+
+            itemId:
+              row.item_id,
+
+            kunde:
+              row.kunde || "",
+
+            lejemalsnr:
+              row.lejemalsnr || "",
+
+            adresse:
+              row.adresse || "",
+
+            vaerelser:
+              row.vaerelser || "",
+
+            typeSyn:
+              row.type_syn || "",
+
+            dato:
+              formatDatabaseDate(
+                row.dato
+              )
+
+          })
+        );
+
+
+      console.log(
+        "[BATCH] Batch:",
+        batchId,
+        "| Syn:",
+        syn.length
+      );
+
+
+      return res.json({
+
+        success: true,
+
+        batchId,
+
+        count:
+          syn.length,
+
+        syn
+
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "[BATCH ERROR]",
         error.message
       );
 
@@ -1229,7 +1477,9 @@ app.get(
       const result =
         await pool.query(`
           SELECT
+
             kunde,
+
             COUNT(*)::int AS count
 
           FROM syn
@@ -1328,6 +1578,10 @@ app.get(
 // ==================================================
 // RESET UNSENT
 // ==================================================
+//
+// Bruges kun manuelt til en ny ren test.
+// Den gør ALLE syn usendte igen.
+// ==================================================
 
 app.get(
   "/api/reset-unsent",
@@ -1345,6 +1599,9 @@ app.get(
               FALSE,
 
             sent_at =
+              NULL,
+
+            send_batch_id =
               NULL
 
           RETURNING item_id
@@ -1366,8 +1623,8 @@ app.get(
 
         resetItemIds:
           result.rows.map(
-            r =>
-              r.item_id
+            row =>
+              row.item_id
           )
 
       });
@@ -1392,11 +1649,12 @@ app.get(
 // DELETE SENT SYN
 // ==================================================
 //
-// Manuel oprydning efter at syn er faktureret.
-// Endpointet sletter KUN syn, som allerede er
-// markeret som sendt til Zapier.
+// MANUEL OPRYDNING EFTER FAKTURERING
 //
-// Åbn i browser:
+// Sletter KUN syn, hvor:
+// sent_to_zapier = TRUE
+//
+// URL:
 // /api/delete-sent-syn
 // ==================================================
 
@@ -1409,7 +1667,10 @@ app.get(
       const result =
         await pool.query(`
           DELETE FROM syn
-          WHERE sent_to_zapier = TRUE
+
+          WHERE
+            sent_to_zapier = TRUE
+
           RETURNING item_id
         `);
 
@@ -1429,8 +1690,8 @@ app.get(
 
         deletedItemIds:
           result.rows.map(
-            r =>
-              r.item_id
+            row =>
+              row.item_id
           )
 
       });
