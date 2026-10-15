@@ -5,6 +5,7 @@
 const express = require("express");
 const { Pool } = require("pg");
 const crypto = require("crypto");
+const { resolvePfaFields } = require("./customers/pfa");
 
 const app = express();
 
@@ -899,7 +900,13 @@ app.get(
             dato:
               formatDatabaseDate(
                 row.dato
-              )
+              ),
+
+            ...resolvePfaFields(
+              row.kunde,
+              row.lejemalsnr,
+              row.adresse
+            )
 
           })
         );
@@ -1355,7 +1362,13 @@ app.get(
             dato:
               formatDatabaseDate(
                 row.dato
-              )
+              ),
+
+            ...resolvePfaFields(
+              row.kunde,
+              row.lejemalsnr,
+              row.adresse
+            )
 
           })
         );
