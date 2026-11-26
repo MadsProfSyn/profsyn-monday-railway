@@ -6,6 +6,7 @@ const express = require("express");
 const { Pool } = require("pg");
 const crypto = require("crypto");
 const { resolvePfaFields } = require("./customers/pfa");
+const { resolveSfFields } = require("./customers/sf");
 
 const app = express();
 
@@ -906,6 +907,12 @@ app.get(
               row.kunde,
               row.lejemalsnr,
               row.adresse
+            ),
+
+            ...resolveSfFields(
+              row.kunde,
+              row.lejemalsnr,
+              row.adresse
             )
 
           })
@@ -1365,6 +1372,12 @@ app.get(
               ),
 
             ...resolvePfaFields(
+              row.kunde,
+              row.lejemalsnr,
+              row.adresse
+            ),
+
+            ...resolveSfFields(
               row.kunde,
               row.lejemalsnr,
               row.adresse
