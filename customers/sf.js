@@ -416,7 +416,7 @@ function parseHouseNumberRange(address) {
 function extractStreetAndNumber(address) {
   const normalized = normalizeSfText(address);
   // Street + first number; supports addresses with apartment/floor details after the number.
-  const match = normalized.match(/^(.+?)\s+(\d+)\b/);
+  const match = normalized.match(/^(.+?)\s+(\d+)([a-z]*)\b/);
   if (!match) return null;
   return { street: match[1].trim(), number: Number(match[2]) };
 }
@@ -448,9 +448,66 @@ function addressMatchesProperty(inputAddress, property) {
   return inputParts.number === propertyParts.number;
 }
 
+
+ // Explicit rules reviewed against Monday. Provisional customers are not billable.
+ const REVIEW_RULES = [
+ ["brassoevej",57,"FORE Århus I ApS",1,9,"odd"],
+ ["brassoevej",72,"Bolig+ Århus I ApS",2,6,"even"],
+ ["asgaardsvej",188,"Thors Have A ApS",32,44],
+ ["asgaardsvej",189,"Thors Have B ApS",21,31],
+ ["asgaardsvej",189,"Thors Have B ApS",45,53],
+ ["asgaardsvej",193,"Thors Have G ApS",1,13],
+ ["midgaardsvej",190,"Thors Have C ApS",42,50],
+ ["midgaardsvej",191,"Thors Have D ApS",30,40],
+ ["midgaardsvej",192,"Thors Have F ApS",2,12],
+ ["midgaardsvej",193,"Thors Have G ApS",16,24],
+ ["theklavej",199,"Ejendomsselskabet Theklavej 33-37 ApS"],
+ ["amtmandshave",183,"FORE Amtmandshave ApS"],
+ ["soelleroedgade",128,"FORE Søllerødgade K/S"],
+ ["eriksvej",69,"FORE Roskilde ApS"],
+ ["langoevej",176,"Bolig+ Kolding II ApS"],
+ ["samsoevej",176,"Bolig+ Kolding II ApS"],
+ ["skibsager",75,"Bolig+ København I ApS"],
+ ["vesterdamsvaenget",181,"FORE Lind ApS"],
+ ["ny gjellerupvej",177,"FORE Senior I ApS"],
+ ["hammerum hovedgade",177,"FORE Senior I ApS"],
+ ["frederikssundsvej",184,"SFM Bolig+ København ApS",98,100,null,true],
+ ["rugaardsparken",152,"SFM Bolig+ Ry ApS",null,null,null,true],
+ ["kastanjebakken",229,"SFM Bolig+ Næstved ApS",14,14,null,true],
+ ["gartnertorvet",5,"Bolig+ Odense I ApS",11,11,null,true],
+ ["lindehaven",73,"FORE Lindehaven ApS",1,18],
+ ["lindehaven",74,"Bolig+ København IV ApS",29,56],
+ ["granskoven",59,"FORE Granskoven II ApS",14,22,"ground"],
+ ["granskoven",68,"FORE Granskoven ApS",14,22,"upper"],
+ ["john steinbecks alle",171,"GGNTM PropCo 3 ApS",104,188],
+ ["john steinbecks alle",172,"GGNTM PropCo 4 ApS",10,102],
+ ["raevegade",null,"Rævegade-Strandgade Invest ApS",6,9],
+ ["telegrafvej",81,"Tinderbox PropCo I ApS",4,4],
+ ["telegrafvej",28,"Tinderbox PropCo II ApS",6,6],
+ ["telegrafvej",null,"Tinderbox PropCo III ApS",8,10]
+ ];
+ function sfCanonical(s) {
+   return String(s ?? "").toLowerCase().replace(/æ/g,"ae").replace(/ø/g,"oe").replace(/å/g,"aa").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9\s]/g," ").replace(/\s+/g," ").trim();
+ }
+ function reviewedMatch(address) {
+   const a=sfCanonical(address);
+   const p=a.match(/^(.+?)\s+(\d+)([a-z]*)\b/);
+   if (!p) return null;
+   const street=p[1], n=Number(p[2]);
+   const rows=REVIEW_RULES.filter(r=>r[0]===street);
+   if (!rows.length) return null;
+   const ground=/(?:^|[\s,])st\.(?:\s|,|$)/i.test(address);
+   const upper=/(?:,\s*|\s)[1-9]\d*\.(?:\s|,|$)/.test(address);
+   const matches=rows.filter(r=>(r[3]==null||n>=r[3])&&(r[4]==null||n<=r[4])&&(!r[5]||r[5]==="odd"&&n%2===1||r[5]==="even"&&n%2===0||r[5]==="ground"&&ground||r[5]==="upper"&&upper));
+   if(matches.length!==1) return {status:"ambiguous", candidates:rows.map(r=>({kundenr:String(r[1]??""),kunde:r[2]}))};
+   const r=matches[0], old=SF_PROPERTIES.find(x=>x.kundenr===String(r[1]));
+   if(r[6]||!r[1]) return {status:"needs_review",candidates:[{kundenr:String(r[1]??""),kunde:r[2]}]};
+   return {status:"matched",property:{...old,kundenr:String(r[1]),kunde:r[2],selskab:r[2],cvr:old?.cvr||""}};
+ }
+
 function resolveSfFields(kunde, lejemalsnr, adresse) {
   const normalizedCustomer = normalizeSfText(kunde);
-  const isSf = !normalizedCustomer ||
+  const isSf =
     normalizedCustomer === "sf" ||
     normalizedCustomer.includes("sf management") ||
     normalizedCustomer.includes("sf fore") ||
@@ -469,7 +526,14 @@ function resolveSfFields(kunde, lejemalsnr, adresse) {
     };
   }
 
-  const candidates = SF_PROPERTIES.filter(property =>
+  const review = reviewedMatch(adresse);
+  if (review && review.status !== "matched") return {
+    sfResolveStatus: review.status, sfMatchMethod:"", sfKundenr:"", sfKunde:"", sfCvr:"", sfSelskab:"", sfMatchCandidates:review.candidates
+  };
+  if (/aflyst|no[ -]?show|fejlbooking/i.test(adresse)) return {
+    sfResolveStatus:"needs_review",sfMatchMethod:"",sfKundenr:"",sfKunde:"",sfCvr:"",sfSelskab:"",sfMatchCandidates:[]
+  };
+  const candidates = review ? [review.property] : SF_PROPERTIES.filter(property =>
     addressMatchesProperty(adresse, property)
   );
 
