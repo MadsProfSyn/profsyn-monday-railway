@@ -449,7 +449,7 @@ function addressMatchesProperty(inputAddress, property) {
 }
 
 
- // Explicit rules reviewed against Monday. Provisional customers are not billable.
+ // Explicit rules reviewed against Monday. Four provisional customer mappings enabled at user request; verify before production.
  const REVIEW_RULES = [
  ["gartnerbyen",5,"Bolig+ Odense I ApS"],
  ["borresoevej",72,"Bolig+ Århus I ApS",3,5],
@@ -474,10 +474,10 @@ function addressMatchesProperty(inputAddress, property) {
  ["vesterdamsvaenget",181,"FORE Lind ApS"],
  ["ny gjellerupvej",177,"FORE Senior I ApS"],
  ["hammerum hovedgade",177,"FORE Senior I ApS"],
- ["frederikssundsvej",184,"SFM Bolig+ København ApS",98,100,null,true],
- ["rugaardsparken",152,"SFM Bolig+ Ry ApS",null,null,null,true],
- ["kastanjebakken",229,"SFM Bolig+ Næstved ApS",14,14,null,true],
- ["gartnertorvet",5,"Bolig+ Odense I ApS",11,11,null,true],
+ ["frederikssundsvej",184,"SFM Bolig+ København ApS",98,100,null,false],
+ ["rugaardsparken",152,"SFM Bolig+ Ry ApS",null,null,null,false],
+ ["kastanjebakken",229,"SFM Bolig+ Næstved ApS",14,14,null,false],
+ ["gartnertorvet",5,"Bolig+ Odense I ApS",11,11,null,false],
  ["lindehaven",73,"FORE Lindehaven ApS",1,18],
  ["lindehaven",74,"Bolig+ København IV ApS",29,56],
  ["granskoven",59,"FORE Granskoven II ApS",14,22,"ground"],
