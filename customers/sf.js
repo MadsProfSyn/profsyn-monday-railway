@@ -534,9 +534,6 @@ function resolveSfFields(kunde, lejemalsnr, adresse) {
   if (review && review.status !== "matched") return {
     sfResolveStatus: review.status, sfMatchMethod:"", sfKundenr:"", sfKunde:"", sfCvr:"", sfSelskab:"", sfMatchCandidates:review.candidates
   };
-  if (/aflyst|no[ -]?show|fejlbooking/i.test(adresse)) return {
-    sfResolveStatus:"needs_review",sfMatchMethod:"",sfKundenr:"",sfKunde:"",sfCvr:"",sfSelskab:"",sfMatchCandidates:[]
-  };
   const candidates = review ? [review.property] : SF_PROPERTIES.filter(property =>
     addressMatchesProperty(adresse, property)
   );
