@@ -451,6 +451,9 @@ function addressMatchesProperty(inputAddress, property) {
 
  // Explicit rules reviewed against Monday. Provisional customers are not billable.
  const REVIEW_RULES = [
+ ["gartnerbyen",5,"Bolig+ Odense I ApS"],
+ ["borresoevej",72,"Bolig+ Århus I ApS",3,5],
+ ["borresoevej",77,"Ejendomsselskabet Risskov A/S",45,49],
  ["brassoevej",57,"FORE Århus I ApS",1,9,"odd"],
  ["brassoevej",72,"Bolig+ Århus I ApS",2,6,"even"],
  ["asgaardsvej",188,"Thors Have A ApS",32,44],
@@ -510,6 +513,7 @@ function resolveSfFields(kunde, lejemalsnr, adresse) {
   const isSf =
     normalizedCustomer === "sf" ||
     normalizedCustomer.includes("sf management") ||
+    normalizedCustomer.includes("sf managment") ||
     normalizedCustomer.includes("sf fore") ||
     normalizedCustomer === "aep" ||
     normalizedCustomer === "ares";
