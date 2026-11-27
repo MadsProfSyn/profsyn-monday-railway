@@ -8,6 +8,11 @@ const crypto = require("crypto");
 const { resolvePfaFields } = require("./customers/pfa");
 const { resolveSfFields } = require("./customers/sf");
 
+function canonicalCustomerName(name) {
+  const customerName = String(name || "").trim();
+  return /^pfa(?:\s*\(copy\))*$/i.test(customerName) ? "PFA" : customerName;
+}
+
 const app = express();
 
 app.use(express.json());
@@ -651,10 +656,7 @@ app.post(
       // ----------------------------------------------
 
       const kunde =
-        String(
-          item.name ||
-          ""
-        ).trim();
+        canonicalCustomerName(item.name);
 
 
       const lejemalsnr =
@@ -898,13 +900,16 @@ app.get(
 
             ...row,
 
+            kunde:
+              canonicalCustomerName(row.kunde),
+
             dato:
               formatDatabaseDate(
                 row.dato
               ),
 
             ...resolvePfaFields(
-              row.kunde,
+              canonicalCustomerName(row.kunde),
               row.lejemalsnr,
               row.adresse
             ),
@@ -1352,7 +1357,7 @@ app.get(
               row.item_id,
 
             kunde:
-              row.kunde || "",
+              canonicalCustomerName(row.kunde),
 
             lejemalsnr:
               row.lejemalsnr || "",
@@ -1372,7 +1377,7 @@ app.get(
               ),
 
             ...resolvePfaFields(
-              row.kunde,
+              canonicalCustomerName(row.kunde),
               row.lejemalsnr,
               row.adresse
             ),
