@@ -449,9 +449,16 @@ function addressMatchesProperty(inputAddress, property) {
 }
 
 
- // Explicit rules reviewed against Monday. Four provisional customer mappings enabled at user request; verify before production.
+ // Explicit address rules reviewed against Monday.
  const REVIEW_RULES = [
- ["gartnerbyen",5,"Bolig+ Odense I ApS"],
+ ["gartnerbyen",91,"GADM K/S",24,24],
+ ["gartnerbyen",157,"GADM II K/S",53,53],
+ ["gartnerbyen",5,"Bolig+ Odense I ApS",57,57],
+ ["gartnerbyen",5,"Bolig+ Odense I ApS",59,59,null,false,"7-241"],
+ ["gartnerbyen",5,"Bolig+ Odense I ApS",61,61],
+ ["gartnerbyen",142,"Bolig+ Odense II ApS",60,60],
+ ["gartnerbyen",141,"FORE Odense I ApS",70,72],
+ ["gartnerbyen",142,"Bolig+ Odense II ApS",80,86],
  ["borresoevej",72,"Bolig+ Århus I ApS",3,5],
  ["borresoevej",77,"Ejendomsselskabet Risskov A/S",45,49],
  ["brassoevej",57,"FORE Århus I ApS",1,9,"odd"],
@@ -477,7 +484,7 @@ function addressMatchesProperty(inputAddress, property) {
  ["frederikssundsvej",184,"SFM Bolig+ København ApS",98,100,null,false],
  ["rugaardsparken",152,"SFM Bolig+ Ry ApS",null,null,null,false],
  ["kastanjebakken",229,"SFM Bolig+ Næstved ApS",14,14,null,false],
- ["gartnertorvet",5,"Bolig+ Odense I ApS",11,11,null,false],
+ ["gartnertorvet",157,"GADM II K/S"],
  ["lindehaven",73,"FORE Lindehaven ApS",1,18],
  ["lindehaven",74,"Bolig+ København IV ApS",29,56],
  ["granskoven",59,"FORE Granskoven II ApS",14,22,"ground"],
@@ -492,10 +499,13 @@ function addressMatchesProperty(inputAddress, property) {
  function sfCanonical(s) {
    return String(s ?? "").toLowerCase().replace(/æ/g,"ae").replace(/ø/g,"oe").replace(/å/g,"aa").normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9\s]/g," ").replace(/\s+/g," ").trim();
  }
- function reviewedMatch(address) {
+ function reviewedMatch(address, lejemalsnr) {
    const a=sfCanonical(address);
    const p=a.match(/^(.+?)\s+(\d+)([a-z]*)\b/);
-   if (!p) return null;
+   if (!p) {
+     if (/^(gartnerbyen|gartnertorvet)\b/.test(a)) return {status:"needs_review", candidates:[]};
+     return null;
+   }
    const street=p[1], n=Number(p[2]);
    const rows=REVIEW_RULES.filter(r=>r[0]===street);
    if (!rows.length) return null;
@@ -504,7 +514,10 @@ function addressMatchesProperty(inputAddress, property) {
    const matches=rows.filter(r=>(r[3]==null||n>=r[3])&&(r[4]==null||n<=r[4])&&(!r[5]||r[5]==="odd"&&n%2===1||r[5]==="even"&&n%2===0||r[5]==="ground"&&ground||r[5]==="upper"&&upper));
    if(matches.length!==1) return {status:"ambiguous", candidates:rows.map(r=>({kundenr:String(r[1]??""),kunde:r[2]}))};
    const r=matches[0], old=SF_PROPERTIES.find(x=>x.kundenr===String(r[1]));
-   if(r[6]||!r[1]) return {status:"needs_review",candidates:[{kundenr:String(r[1]??""),kunde:r[2]}]};
+   const requiredPrefix = r[7];
+   const rentalNumber = String(lejemalsnr ?? "").trim().replace(/[–—]/g, "-");
+   const prefixMatches = requiredPrefix == null || rentalNumber === requiredPrefix || rentalNumber.startsWith(requiredPrefix + "-");
+   if(r[6]||!r[1]||!prefixMatches) return {status:"needs_review",candidates:[{kundenr:String(r[1]??""),kunde:r[2]}]};
    return {status:"matched",property:{...old,kundenr:String(r[1]),kunde:r[2],selskab:r[2],cvr:old?.cvr||""}};
  }
 
@@ -530,7 +543,7 @@ function resolveSfFields(kunde, lejemalsnr, adresse) {
     };
   }
 
-  const review = reviewedMatch(adresse);
+  const review = reviewedMatch(adresse, lejemalsnr);
   if (review && review.status !== "matched") return {
     sfResolveStatus: review.status, sfMatchMethod:"", sfKundenr:"", sfKunde:"", sfCvr:"", sfSelskab:"", sfMatchCandidates:review.candidates
   };
