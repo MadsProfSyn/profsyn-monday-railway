@@ -18,9 +18,9 @@ const PFA_CUSTOMERS = {
 const PFA_PROPERTIES = [
   { enhedsnr: "152-101", kundenr: "226", ejendom: "Frederikskaj 2A-N", address: "Frederikskaj 2A-B,F-G, M-N, 2450 København SV", street: "Frederikskaj", from: 2, to: 2 },
 
-  { enhedsnr: "152-104", kundenr: "226", ejendom: "Duftrankevej 160-206 og 210-268", address: "Duftrankevej 210-268, 5200 Odense V", street: "Duftrankevej", ranges: [{ from: 160, to: 206 }, { from: 210, to: 268 }], aliases: ["Duftrankevej 160-206"] },
+  { enhedsnr: "152-104", kundenr: "226", ejendom: "Duftrankevej 210-268", address: "Duftrankevej 210-268, 5200 Odense V", street: "Duftrankevej", from: 210, to: 268 },
 
-  { enhedsnr: "152-105", kundenr: "226", ejendom: "Gartnerbyen 9-19 og 160-206", address: "Gartnerbyen 9-19, 5200 Odense V", street: "Gartnerbyen", ranges: [{ from: 9, to: 19 }, { from: 160, to: 206 }], aliases: ["Gartnerbyen 160-206"] },
+  { enhedsnr: "152-105", kundenr: "226", ejendom: "Gartnerbyen 9-19", address: "Gartnerbyen 9-19, 5200 Odense V", street: "Gartnerbyen", from: 9, to: 19 },
 
   { enhedsnr: "152-106", kundenr: "226", ejendom: "Flegmade 18-50", address: "Flegmade 18-50, 7100 Vejle", street: "Flegmade", from: 18, to: 50 },
   { enhedsnr: "152-107", kundenr: "226", ejendom: "Grøndahlsvej 15", address: "Grøndahlsvej 15, 7400 Herning", street: "Grøndahlsvej", from: 15, to: 15 },
@@ -39,6 +39,8 @@ const PFA_PROPERTIES = [
   { enhedsnr: "152-119", kundenr: "230", ejendom: "Fjordbrynet 2", address: "Fjordbrynet 2, 6000 Kolding", street: "Fjordbrynet", from: 2, to: 2 },
   { enhedsnr: "152-120", kundenr: "226", ejendom: "Gartnerbyen 104-116, Seniorboliger", address: "Gartnerbyen 104-116, 5200 Odense V", street: "Gartnerbyen", from: 104, to: 116 },
 
+  // Monday uses 152-121 on the Duftrankevej properties in this range.
+  { enhedsnr: "152-121", kundenr: "226", ejendom: "Duftrankevej 160-206", address: "Duftrankevej 160-206, 5200 Odense V", street: "Duftrankevej", from: 160, to: 206 },
   { enhedsnr: "152-122", kundenr: "226", ejendom: "C V E Knuths Vej 2 A-F", address: "C V E Knuths Vej 2 A-F, 2900 Hellerup", street: "C V E Knuths Vej", from: 2, to: 2 },
   { enhedsnr: "152-125", kundenr: "226", ejendom: "Vodroffsvej 16", address: "Vodroffsvej 16, 1900 Frederiksberg C", street: "Vodroffsvej", from: 16, to: 16 },
   { enhedsnr: "152-127", kundenr: "226", ejendom: "Oase Husene I", address: "Jens Kofoeds Gade 2-26, 2630 Taastrup", street: "Jens Kofoeds Gade", from: 2, to: 26, aliases: ["Oase Husene I"] },
