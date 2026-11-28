@@ -7,6 +7,72 @@ const DRAFT_REF = id => "Istandsættelse " + id;
 const safeHtml = value => String(value ?? "").replace(/[&<>"']/g, character =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 
+function formatInspectionDate(value) {
+  const date = String(value ?? "").trim();
+  const match = date.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T ])/);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : date;
+}
+
+function buildAttachmentHtml(batch, number) {
+  const rows = batch.items.map(item => `
+    <tr>
+      <td>${safeHtml(item.lease)}</td>
+      <td>${safeHtml(item.address)}</td>
+      <td>${safeHtml(formatInspectionDate(item.date))}</td>
+      <td>${safeHtml(item.contractor)}</td>
+    </tr>`).join("");
+
+  return `<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <title>Bilag til faktura</title>
+  <style>
+    @page { size: A4 landscape; margin: 12mm; }
+    * { box-sizing: border-box; }
+    body { font: 9px Arial, Helvetica, sans-serif; color: #222; margin: 0; }
+    header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+    h1 { font-size: 22px; margin: 0; }
+    .customer { font-size: 12px; margin: 4px 0 0; }
+    .info { text-align: right; font-size: 10px; line-height: 1.5; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; }
+    th { background: #eee; border: 1px solid #bbb; padding: 5px; text-align: left; }
+    td { border: 1px solid #ddd; padding: 4px; vertical-align: top; overflow-wrap: anywhere; }
+    .lease { width: 19%; }
+    .address { width: 43%; }
+    .date { width: 13%; }
+    .contractor { width: 25%; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Bilag til faktura</h1>
+      <p class="customer">${safeHtml(batch.contractor.name)}</p>
+    </div>
+    <div class="info">
+      <strong>Kladdenr.</strong> ${safeHtml(number)}<br>
+      <strong>Kundenr.</strong> ${safeHtml(batch.contractor.number)}<br>
+      <strong>Antal syn</strong> ${batch.items.length}
+    </div>
+  </header>
+  <table>
+    <thead>
+      <tr>
+        <th class="lease">Lejemålsnr.</th>
+        <th class="address">Adresse</th>
+        <th class="date">Synsdato</th>
+        <th class="contractor">Bestil håndværkere</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`;
+}
+
 function mondayAdapter(request, config) {
   const fields = config.fields;
   const ids = Object.values(fields);
@@ -128,7 +194,7 @@ function economicAdapter(env) {
     },
     async hasAttachment(number) {
       const response = await request(ECONOMIC + pdfPath(number), { headers });
-      if (response.status === 404) return false;
+      if (response.status === 404 || response.status === 204) return false;
       if (!response.ok) throw Error("e-conomic bilagskontrol HTTP " + response.status);
       const bytes = Buffer.from(await response.arrayBuffer());
       if (bytes.subarray(0, 4).toString() !== "%PDF") throw Error("e-conomic returnerede ikke et PDF-bilag");
@@ -146,18 +212,10 @@ function economicAdapter(env) {
 function pdfAdapter(apiKey) {
   return {
     async render(batch, number) {
-      const rows = batch.items.map(item => [item.customer, item.address, item.lease, item.type, item.date]
-        .map(value => "<td>" + safeHtml(value) + "</td>").join("")).map(row => "<tr>" + row + "</tr>").join("");
-      const html = `<!doctype html><html lang="da"><meta charset="utf-8"><style>
-        body{font:11pt Arial} table{border-collapse:collapse;width:100%} th,td{border:1px solid #888;
-        text-align:left;padding:6px} tr{break-inside:avoid} thead{display:table-header-group}
-        </style><h1>Bilag til administration af istandsættelse</h1>
-        <p>${safeHtml(batch.contractor.name)} · Kladde ${safeHtml(number)} · ${batch.items.length} syn</p>
-        <table><thead><tr><th>Kunde</th><th>Adresse</th><th>Lejemålsnr.</th><th>Syn</th><th>Dato</th></tr></thead>
-        <tbody>${rows}</tbody></table></html>`;
+      const html = buildAttachmentHtml(batch, number);
       const response = await request(PRODUCT_PDF, {
         method: "POST", headers: { "x-api-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ html, name: `Istandsaettelse-${number}.pdf`, paperSize: "A4", orientation: "Landscape", async: false }),
+        body: JSON.stringify({ html, name: `Istandsaettelse-${number}.pdf`, paperSize: "A4", orientation: "Landscape", printBackground: true, async: false }),
       });
       if (!response.ok) throw Error("PDF.co HTTP " + response.status);
       const result = await response.json();

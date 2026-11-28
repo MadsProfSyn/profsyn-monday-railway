@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { groupInspections, processBatch, READY, COMPLETE } = require("./worker");
-const { economicAdapter, mondayAdapter } = require("./integrations");
+const { economicAdapter, mondayAdapter, pdfAdapter } = require("./integrations");
 const { startRenovationWorker } = require("./index");
 
 const contractor = { number: 7, name: "Fiktiv ApS" };
@@ -95,4 +95,52 @@ test("returns only marked Monday items and updates the two dedicated fields", as
 
 test("normal service startup does not require renovation configuration", () => {
   assert.doesNotThrow(() => startRenovationWorker({ env: {} }));
+});
+
+test("renders the four inspection fields and verifies the PDF on the same draft", async t => {
+  const filename = "Istandsaettelse-91.pdf";
+  const draftUrl = "https://restapi.e-conomic.com/invoices/drafts/91/attachment/file";
+  const bytes = Buffer.from("%PDF-1.4 test");
+  let attached = false;
+  const calls = [];
+  t.mock.method(global, "fetch", async (url, init) => {
+    calls.push([url, init.method ?? "GET"]);
+    if (url === "https://api.pdf.co/v1/pdf/convert/from/html") {
+      const request = JSON.parse(init.body);
+      assert.equal(request.name, filename);
+      assert.equal(request.orientation, "Landscape");
+      assert.match(request.html, />Lejemålsnr\.<\/th>/);
+      assert.match(request.html, />Adresse<\/th>/);
+      assert.match(request.html, />Synsdato<\/th>/);
+      assert.match(request.html, />Bestil håndværkere<\/th>/);
+      assert.match(request.html, /<td>01-003<\/td>\s*<td>Øvej 3 &amp; 5<\/td>\s*<td>28\.11\.2026<\/td>\s*<td>Fiktiv HB<\/td>/);
+      assert.match(request.html, /<td>01-004<\/td>\s*<td>Åvej 12<\/td>\s*<td><\/td>\s*<td>Fiktiv HB<\/td>/);
+      assert.match(request.html, /Fiktiv Håndværk ApS/);
+      assert.doesNotMatch(request.html, /Privat lejer/);
+      return Response.json({ url: "https://example.test/bilag.pdf" });
+    }
+    if (url === "https://example.test/bilag.pdf") return new Response(bytes);
+    assert.equal(url, draftUrl);
+    if (init.method === "POST") {
+      assert.equal(init.body.get("").name, filename);
+      assert.deepEqual(Buffer.from(await init.body.get("").arrayBuffer()), bytes);
+      attached = true;
+      return new Response(null, { status: 201 });
+    }
+    return attached ? new Response(bytes) : new Response(null, { status: 204 });
+  });
+  const economic = economicAdapter({});
+  assert.equal(await economic.hasAttachment("91"), false);
+  const pdf = await pdfAdapter("test").render({
+    contractor: { number: 7, name: "Fiktiv Håndværk ApS" },
+    items: [
+      { lease: "01-003", address: "Øvej 3 & 5", date: "2026-11-28 10:00", contractor: "Fiktiv HB", customer: "Privat lejer" },
+      { lease: "01-004", address: "Åvej 12", contractor: "Fiktiv HB" },
+    ],
+  }, "91");
+  await economic.attach("91", pdf);
+  assert.equal(await economic.hasAttachment("91"), true);
+  assert.deepEqual(calls.filter(([url]) => url.startsWith("https://restapi.e-conomic.com")), [
+    [draftUrl, "GET"], [draftUrl, "POST"], [draftUrl, "GET"],
+  ]);
 });
