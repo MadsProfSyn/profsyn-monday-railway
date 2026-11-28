@@ -7,6 +7,7 @@ const { Pool } = require("pg");
 const crypto = require("crypto");
 const { resolvePfaFields } = require("./customers/pfa");
 const { resolveSfFields } = require("./customers/sf");
+const { startRenovationWorker } = require("./renovation");
 
 function canonicalCustomerName(name) {
   const customerName = String(name || "").trim();
@@ -1756,6 +1757,12 @@ app.get(
 initDatabase()
 
   .then(() => {
+
+    try {
+      startRenovationWorker({ pool, mondayRequest });
+    } catch (error) {
+      console.error("[Istandsættelse] Kunne ikke starte:", error.message);
+    }
 
     app.listen(
       PORT,
